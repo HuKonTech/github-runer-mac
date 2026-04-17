@@ -1,12 +1,13 @@
-"""Settings dialog — language, database management, and TPU status."""
+"""Settings dialog — language, database management, TPU status and updates."""
 
 from __future__ import annotations
 
 from pathlib import Path
 from typing import Optional
 
-from PySide6.QtCore import QThread, Signal
+from PySide6.QtCore import QSettings, QThread, Signal
 from PySide6.QtWidgets import (
+    QCheckBox,
     QComboBox,
     QDialog,
     QDialogButtonBox,
@@ -20,7 +21,12 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
+from app import __version__
 from app.ui.i18n import SUPPORTED, current_language, set_language, t
+
+
+def _qsettings() -> QSettings:
+    return QSettings("FaceLocal", "FaceLocal")
 
 
 class _TpuProbeThread(QThread):
@@ -86,6 +92,29 @@ class SettingsDialog(QDialog):
         btn_row.addStretch()
         db_layout.addLayout(btn_row)
         layout.addWidget(db_group)
+
+        # ── Updates ───────────────────────────────────────────────────────
+        upd_group = QGroupBox("Frissítések / Updates")
+        upd_layout = QVBoxLayout(upd_group)
+
+        self._update_status_label = QLabel(f"Jelenlegi verzió / Current version: <b>v{__version__}</b>")
+        self._update_status_label.setTextFormat(1)  # RichText
+        upd_layout.addWidget(self._update_status_label)
+
+        self._notify_check = QCheckBox(
+            "Értesítés ha új verzió érhető el / Notify when a new version is available"
+        )
+        notify_enabled = _qsettings().value("updates/notify", True, type=bool)
+        self._notify_check.setChecked(notify_enabled)
+        upd_layout.addWidget(self._notify_check)
+
+        upd_btn_row = QHBoxLayout()
+        self._check_upd_btn = QPushButton("🔄  Frissítés keresése / Check for updates")
+        self._check_upd_btn.clicked.connect(self._on_check_update)
+        upd_btn_row.addWidget(self._check_upd_btn)
+        upd_btn_row.addStretch()
+        upd_layout.addLayout(upd_btn_row)
+        layout.addWidget(upd_group)
 
         # ── TPU status ────────────────────────────────────────────────────
         tpu_group = QGroupBox(t("tpu_title"))
@@ -185,7 +214,40 @@ class SettingsDialog(QDialog):
     # Accept
     # ------------------------------------------------------------------
 
+    def _on_check_update(self) -> None:
+        from app.services.update_service import fetch_latest_release, is_newer
+        from app.ui.dialogs.update_dialog import UpdateDialog
+
+        self._check_upd_btn.setEnabled(False)
+        self._update_status_label.setText("⏳ Ellenőrzés… / Checking…")
+        from PySide6.QtWidgets import QApplication
+        QApplication.processEvents()
+
+        release = fetch_latest_release()
+        self._check_upd_btn.setEnabled(True)
+
+        if release is None:
+            self._update_status_label.setText(
+                "⚠ Nem sikerült a kapcsolódás / Could not reach GitHub"
+            )
+            return
+
+        if not is_newer(release.version, __version__):
+            self._update_status_label.setText(
+                f"✓ Naprakész / Up to date  —  v{__version__}"
+            )
+            self._update_status_label.setStyleSheet("color: #4caf50;")
+            return
+
+        self._update_status_label.setText(
+            f"🆕 Új verzió: <b>v{release.version}</b>  (jelenlegi: v{__version__})"
+        )
+        self._update_status_label.setStyleSheet("color: #ffcc00;")
+        dlg = UpdateDialog(release, parent=self)
+        dlg.exec()
+
     def _on_accept(self) -> None:
+        _qsettings().setValue("updates/notify", self._notify_check.isChecked())
         selected_lang = self._lang_combo.currentData()
         if selected_lang != current_language():
             set_language(selected_lang)

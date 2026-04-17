@@ -6,7 +6,8 @@ import logging
 from pathlib import Path
 from typing import List, Optional
 
-from PySide6.QtCore import Qt, Signal, Slot
+from PySide6.QtCore import Qt, QThread, Signal, Slot
+from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import (
     QApplication,
     QDockWidget,
@@ -19,6 +20,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QSplitter,
     QStatusBar,
+    QSystemTrayIcon,
     QToolBar,
     QVBoxLayout,
     QWidget,
@@ -32,6 +34,7 @@ from app.services.clustering_service import ClusteringService
 from app.services.identity_service import IdentityService
 from app.ui.dialogs.export_dialog import ExportDialog
 from app.ui.dialogs.manual_face_dialog import NoFaceImagesDialog
+from app.ui.dialogs.update_dialog import UpdateDialog
 from app.ui.dialogs.merge_dialog import MergeDialog
 from app.ui.dialogs.rename_dialog import RenameDialog
 from app.ui.dialogs.settings_dialog import SettingsDialog
@@ -49,6 +52,7 @@ class MainWindow(QMainWindow):
     """Primary application window."""
 
     log_signal = Signal(str, int)
+    _update_ready = Signal(object)   # ReleaseInfo
 
     def __init__(self, config: AppConfig) -> None:
         super().__init__()
@@ -57,6 +61,7 @@ class MainWindow(QMainWindow):
         self._current_person_id: Optional[int] = None
         self._current_face_id: Optional[int] = None
         self._db_path: str = str(config.db_path_resolved)
+        self._pending_release = None
 
         init_db(config.db_path_resolved)
 
@@ -64,8 +69,11 @@ class MainWindow(QMainWindow):
         self._connect_log_handler()
         self._refresh_persons()
         self._retranslate()
+        self._setup_tray()
 
         self.resize(1280, 780)
+        self._update_ready.connect(self._on_update_found)
+        self._start_update_check()
 
     # ------------------------------------------------------------------
     # UI construction
@@ -127,6 +135,12 @@ class MainWindow(QMainWindow):
         self._settings_btn = QPushButton()
         self._settings_btn.clicked.connect(self._on_settings)
         tb.addWidget(self._settings_btn)
+
+        tb.addSeparator()
+
+        self._update_btn = QPushButton("🔄 Frissítés keresése…")
+        self._update_btn.clicked.connect(self._on_check_update_manual)
+        tb.addWidget(self._update_btn)
 
     def _build_central(self) -> None:
         splitter = QSplitter(Qt.Horizontal)
@@ -418,7 +432,8 @@ class MainWindow(QMainWindow):
             if face:
                 _ = face.image
                 if face.image:
-                    _ = face.image.faces
+                    for f in face.image.faces:
+                        _ = f.person
                 self._preview_panel.show_face(face)
 
         self._remove_face_btn.setEnabled(True)
@@ -609,6 +624,104 @@ class MainWindow(QMainWindow):
         self._progress_bar.setVisible(scanning)
         if scanning:
             self._progress_bar.setValue(0)
+
+    # ------------------------------------------------------------------
+    # System tray
+    # ------------------------------------------------------------------
+
+    def _setup_tray(self) -> None:
+        self._tray = QSystemTrayIcon(self)
+        self._tray.setIcon(QIcon.fromTheme("dialog-information", self.style().standardIcon(
+            self.style().StandardPixmap.SP_ComputerIcon
+        )))
+        self._tray.setToolTip("Face-Local")
+        if QSystemTrayIcon.isSystemTrayAvailable():
+            self._tray.show()
+
+    def _notify(self, title: str, message: str) -> None:
+        """Send a system tray notification if enabled in settings."""
+        from PySide6.QtCore import QSettings
+        enabled = QSettings("FaceLocal", "FaceLocal").value("updates/notify", True, type=bool)
+        if not enabled:
+            return
+        if QSystemTrayIcon.isSystemTrayAvailable() and QSystemTrayIcon.supportsMessages():
+            self._tray.showMessage(title, message, QSystemTrayIcon.MessageIcon.Information, 6000)
+        else:
+            # Fallback: status bar
+            self._status_label.setText(f"{title}: {message}")
+
+    # ------------------------------------------------------------------
+    # Update check
+    # ------------------------------------------------------------------
+
+    def _start_update_check(self) -> None:
+        """Background thread — check GitHub releases without blocking the UI."""
+        from app.services.update_service import fetch_latest_release, is_newer
+        from app import __version__
+
+        signal = self._update_ready
+
+        class _CheckThread(QThread):
+            def run(self_inner) -> None:  # noqa: N805
+                release = fetch_latest_release()
+                if release and is_newer(release.version, __version__):
+                    signal.emit(release)
+
+        self._check_thread = _CheckThread(self)
+        self._check_thread.start()
+
+    @Slot(object)
+    def _on_update_found(self, release) -> None:
+        self._pending_release = release
+        self._update_btn.setText(f"🆕 Frissítés: v{release.version}")
+        self._update_btn.setStyleSheet(
+            "QPushButton { color: #ffcc00; font-weight: bold; }"
+        )
+        self._status_label.setText(
+            f"Új verzió elérhető: v{release.version}  —  kattints a frissítésre"
+        )
+        self._notify(
+            "Face-Local frissítés",
+            f"Új verzió elérhető: v{release.version}. Kattints a frissítéshez.",
+        )
+
+    @Slot()
+    def _on_check_update_manual(self) -> None:
+        from app.services.update_service import fetch_latest_release, is_newer
+        from app import __version__
+
+        self._update_btn.setEnabled(False)
+        self._update_btn.setText("⏳ Ellenőrzés…")
+        QApplication.processEvents()
+
+        release = fetch_latest_release()
+        self._update_btn.setEnabled(True)
+
+        if release is None:
+            QMessageBox.warning(
+                self, "Frissítés",
+                "Nem sikerült kapcsolódni a GitHub-hoz.\n"
+                "Ellenőrizd az internet kapcsolatot."
+            )
+            self._update_btn.setText("🔄 Frissítés keresése…")
+            return
+
+        if not is_newer(release.version, __version__):
+            from app import __version__ as cv
+            QMessageBox.information(
+                self, "Frissítés",
+                f"Az alkalmazás naprakész.\nJelenlegi verzió: v{cv}"
+            )
+            self._update_btn.setText("✓ Naprakész")
+            return
+
+        self._pending_release = release
+        self._update_btn.setText(f"🆕 Frissítés: v{release.version}")
+        self._update_btn.setStyleSheet(
+            "QPushButton { color: #ffcc00; font-weight: bold; }"
+        )
+        dlg = UpdateDialog(release, parent=self)
+        dlg.exec()
 
     def _refresh_persons(self) -> None:
         with session_scope() as session:
