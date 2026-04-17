@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: write
+  actions: read
 
 env:
   PYTHON_VERSION: "3.11"
@@ -20,6 +21,8 @@ jobs:
       package_version: ${{ steps.meta.outputs.package_version }}
       tag: ${{ steps.meta.outputs.tag }}
       release_name: ${{ steps.meta.outputs.release_name }}
+      macos_runs_on: ${{ steps.macos_runner.outputs.macos_runs_on }}
+      macos_runner_note: ${{ steps.macos_runner.outputs.macos_runner_note }}
     steps:
       - uses: actions/checkout@v6
 
@@ -48,19 +51,154 @@ jobs:
             echo "release_name=$RELEASE_NAME"
           } >> "$GITHUB_OUTPUT"
 
-  build:
+      - id: macos_runner
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          RUNNER_JSON='"macos-latest"'
+          RUNNER_NOTE="Using GitHub-hosted macOS runner (fallback)."
+          RESPONSE_FILE="$(mktemp)"
+          ERROR_FILE="$(mktemp)"
+
+          if gh api \
+            -H "Accept: application/vnd.github+json" \
+            "/repos/${GITHUB_REPOSITORY}/actions/runners" \
+            >"$RESPONSE_FILE" 2>"$ERROR_FILE"; then
+            MATCH="$(RUNNERS_JSON="$(cat "$RESPONSE_FILE")" python - <<'PY'
+          import json
+          import os
+
+          data = json.loads(os.environ["RUNNERS_JSON"])
+          target = {"self-hosted", "macOS", "ARM64"}
+
+          for runner in data.get("runners", []):
+              labels = {label["name"] for label in runner.get("labels", [])}
+              if (
+                  target.issubset(labels)
+                  and runner.get("status") == "online"
+                  and not runner.get("busy", False)
+              ):
+                  print(json.dumps(["self-hosted", "macOS", "ARM64"]))
+                  raise SystemExit(0)
+
+          raise SystemExit(1)
+          PY
+            )" || true
+
+            if [ -n "$MATCH" ]; then
+              RUNNER_JSON="$MATCH"
+              RUNNER_NOTE="Using self-hosted macOS ARM64 runner."
+            fi
+          else
+            echo "Could not query self-hosted runners; falling back to macos-latest." >&2
+            cat "$ERROR_FILE" >&2
+          fi
+
+          echo "macos_runs_on=$RUNNER_JSON" >> "$GITHUB_OUTPUT"
+          echo "macos_runner_note=$RUNNER_NOTE" >> "$GITHUB_OUTPUT"
+          echo "$RUNNER_NOTE"
+
+  build-macos:
     needs: prepare
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: macos-latest
-            platform: macos
-          - os: windows-latest
-            platform: windows
-          - os: ubuntu-latest
-            platform: linux
+    runs-on: ${{ fromJSON(needs.prepare.outputs.macos_runs_on) }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Selected macOS runner
+        shell: bash
+        run: echo "${{ needs.prepare.outputs.macos_runner_note }}"
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: |
+            pyproject.toml
+            requirements.txt
+
+      - name: Install Python dependencies
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+          python -m pip install . pyinstaller
+
+      - name: Build bundled app
+        shell: bash
+        run: python scripts/package_app.py --version "${{ needs.prepare.outputs.package_version }}"
+
+      - name: Create release directory
+        shell: bash
+        run: mkdir -p release
+
+      - name: Package macOS app
+        shell: bash
+        run: |
+          ditto -c -k --keepParent "dist/Face-Local.app" "release/Face-Local-macOS-app-${{ needs.prepare.outputs.package_version }}.zip"
+          rm -rf release/dmg-root
+          mkdir -p release/dmg-root
+          cp -R "dist/Face-Local.app" "release/dmg-root/"
+          ln -s /Applications "release/dmg-root/Applications"
+          hdiutil create \
+            -volname "Face-Local" \
+            -srcfolder "release/dmg-root" \
+            -ov \
+            -format UDZO \
+            "release/Face-Local-macOS-installer-${{ needs.prepare.outputs.package_version }}.dmg"
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-macos
+          if-no-files-found: error
+          path: release/*
+
+  build-windows:
+    needs: prepare
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: |
+            pyproject.toml
+            requirements.txt
+
+      - name: Install Python dependencies
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+          python -m pip install . pyinstaller
+
+      - name: Build bundled app
+        shell: bash
+        run: python scripts/package_app.py --version "${{ needs.prepare.outputs.package_version }}"
+
+      - name: Create release directory
+        shell: bash
+        run: mkdir -p release
+
+      - name: Package Windows installer
+        shell: powershell
+        run: |
+          choco install innosetup --no-progress -y
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "/DAppVersion=${{ needs.prepare.outputs.package_version }}" "scripts\build_windows_installer.iss"
+          Compress-Archive -Path "dist\Face-Local\*" -DestinationPath "release\Face-Local-windows-portable-${{ needs.prepare.outputs.package_version }}.zip" -Force
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-windows
+          if-no-files-found: error
+          path: release/*
+
+  build-linux:
+    needs: prepare
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
 
@@ -73,7 +211,6 @@ jobs:
             requirements.txt
 
       - name: Install Linux packaging dependencies
-        if: matrix.platform == 'linux'
         shell: bash
         run: |
           sudo apt-get update
@@ -93,32 +230,7 @@ jobs:
         shell: bash
         run: mkdir -p release
 
-      - name: Package macOS app
-        if: matrix.platform == 'macos'
-        shell: bash
-        run: |
-          ditto -c -k --keepParent "dist/Face-Local.app" "release/Face-Local-macOS-app-${{ needs.prepare.outputs.package_version }}.zip"
-          rm -rf release/dmg-root
-          mkdir -p release/dmg-root
-          cp -R "dist/Face-Local.app" "release/dmg-root/"
-          ln -s /Applications "release/dmg-root/Applications"
-          hdiutil create \
-            -volname "Face-Local" \
-            -srcfolder "release/dmg-root" \
-            -ov \
-            -format UDZO \
-            "release/Face-Local-macOS-installer-${{ needs.prepare.outputs.package_version }}.dmg"
-
-      - name: Package Windows installer
-        if: matrix.platform == 'windows'
-        shell: powershell
-        run: |
-          choco install innosetup --no-progress -y
-          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "/DAppVersion=${{ needs.prepare.outputs.package_version }}" "scripts\build_windows_installer.iss"
-          Compress-Archive -Path "dist\Face-Local\*" -DestinationPath "release\Face-Local-windows-portable-${{ needs.prepare.outputs.package_version }}.zip" -Force
-
       - name: Package Linux installer
-        if: matrix.platform == 'linux'
         shell: bash
         run: |
           chmod +x scripts/build_linux_deb.sh
@@ -127,14 +239,16 @@ jobs:
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: release-${{ matrix.platform }}
+          name: release-linux
           if-no-files-found: error
           path: release/*
 
   release:
     needs:
       - prepare
-      - build
+      - build-macos
+      - build-windows
+      - build-linux
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -163,6 +277,7 @@ jobs:
           notes=$'Automated cross-platform build from `main`.\n\n'
           notes+="- Commit: ${GITHUB_SHA}"$'\n'
           notes+="- Run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"$'\n'
+          notes+="- macOS runner: ${{ needs.prepare.outputs.macos_runner_note }}"$'\n'
 
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
             gh release upload "$RELEASE_TAG" "${files[@]}" --clobber
