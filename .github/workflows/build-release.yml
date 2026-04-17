@@ -135,9 +135,6 @@ jobs:
   build-macos:
     needs: prepare
     runs-on: ${{ fromJSON(needs.prepare.outputs.macos_runs_on) }}
-    env:
-      AGENT_TOOLSDIRECTORY: ${{ runner.temp }}/hostedtoolcache
-      RUNNER_TOOL_CACHE: ${{ runner.temp }}/hostedtoolcache
     steps:
       - uses: actions/checkout@v6
 
@@ -147,7 +144,11 @@ jobs:
 
       - name: Prepare writable Python tool cache
         shell: bash
-        run: mkdir -p "$AGENT_TOOLSDIRECTORY"
+        run: |
+          TOOLCACHE="${RUNNER_TEMP}/hostedtoolcache"
+          mkdir -p "$TOOLCACHE"
+          echo "AGENT_TOOLSDIRECTORY=$TOOLCACHE" >> "$GITHUB_ENV"
+          echo "RUNNER_TOOL_CACHE=$TOOLCACHE" >> "$GITHUB_ENV"
 
       - uses: actions/setup-python@v6
         with:
