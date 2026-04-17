@@ -143,6 +143,7 @@ jobs:
         run: echo "${{ needs.prepare.outputs.macos_runner_note }}"
 
       - name: Prepare writable Python tool cache
+        if: ${{ !contains(needs.prepare.outputs.macos_runs_on, 'self-hosted') }}
         shell: bash
         run: |
           TOOLCACHE="${RUNNER_TEMP}/hostedtoolcache"
@@ -150,7 +151,40 @@ jobs:
           echo "AGENT_TOOLSDIRECTORY=$TOOLCACHE" >> "$GITHUB_ENV"
           echo "RUNNER_TOOL_CACHE=$TOOLCACHE" >> "$GITHUB_ENV"
 
+      - name: Select local Python on self-hosted macOS
+        if: ${{ contains(needs.prepare.outputs.macos_runs_on, 'self-hosted') }}
+        shell: bash
+        run: |
+          find_python() {
+            for candidate in python3.11 python3.12 python3.13 python3 python; do
+              if command -v "$candidate" >/dev/null 2>&1; then
+                if "$candidate" - <<'PY' >/dev/null 2>&1
+          import sys
+          raise SystemExit(0 if sys.version_info >= (3, 11) else 1)
+          PY
+                then
+                  command -v "$candidate"
+                  return 0
+                fi
+              fi
+            done
+            return 1
+          }
+
+          PY_BIN="$(find_python)" || {
+            echo "Python 3.11+ was not found on the self-hosted macOS runner." >&2
+            exit 1
+          }
+
+          SHIM_DIR="${RUNNER_TEMP}/python-shims"
+          mkdir -p "$SHIM_DIR"
+          ln -sf "$PY_BIN" "$SHIM_DIR/python"
+          echo "$SHIM_DIR" >> "$GITHUB_PATH"
+          echo "MACOS_PYTHON_BIN=$PY_BIN" >> "$GITHUB_ENV"
+          "$PY_BIN" --version
+
       - uses: actions/setup-python@v6
+        if: ${{ !contains(needs.prepare.outputs.macos_runs_on, 'self-hosted') }}
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
