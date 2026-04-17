@@ -29,8 +29,8 @@ from app.db.database import init_db, session_scope
 from app.db.models import Face, Person
 from app.logging_setup import QLogHandler
 from app.services.clustering_service import ClusteringService
-from app.services.export_service import ExportService
 from app.services.identity_service import IdentityService
+from app.ui.dialogs.export_dialog import ExportDialog
 from app.ui.dialogs.manual_face_dialog import NoFaceImagesDialog
 from app.ui.dialogs.merge_dialog import MergeDialog
 from app.ui.dialogs.rename_dialog import RenameDialog
@@ -104,13 +104,9 @@ class MainWindow(QMainWindow):
 
         tb.addSeparator()
 
-        self._export_csv_btn = QPushButton()
-        self._export_csv_btn.clicked.connect(self._on_export_csv)
-        tb.addWidget(self._export_csv_btn)
-
-        self._export_images_btn = QPushButton()
-        self._export_images_btn.clicked.connect(self._on_export_images)
-        tb.addWidget(self._export_images_btn)
+        self._export_btn = QPushButton()
+        self._export_btn.clicked.connect(self._on_open_export)
+        tb.addWidget(self._export_btn)
 
         tb.addSeparator()
 
@@ -138,8 +134,8 @@ class MainWindow(QMainWindow):
         self._sidebar = SidebarPanel()
         self._sidebar.person_selected.connect(self._on_person_selected)
         self._sidebar.set_recluster_callback(self._on_recluster)
-        self._sidebar.setMinimumWidth(200)
-        self._sidebar.setMaximumWidth(280)
+        self._sidebar.setMinimumWidth(260)
+        self._sidebar.setMaximumWidth(400)
         splitter.addWidget(self._sidebar)
 
         centre = QWidget()
@@ -159,8 +155,9 @@ class MainWindow(QMainWindow):
         splitter.addWidget(self._preview_panel)
 
         splitter.setStretchFactor(0, 0)
-        splitter.setStretchFactor(1, 3)
-        splitter.setStretchFactor(2, 2)
+        splitter.setStretchFactor(1, 1)
+        splitter.setStretchFactor(2, 3)
+        splitter.setSizes([320, 300, 660])
 
         self.setCentralWidget(splitter)
 
@@ -229,8 +226,7 @@ class MainWindow(QMainWindow):
             self._folder_label.setText(f"  {t('no_folder')}")
         self._scan_btn.setText(t("scan_index"))
         self._stop_btn.setText(t("stop"))
-        self._export_csv_btn.setText(t("export_csv"))
-        self._export_images_btn.setText(t("export_images"))
+        self._export_btn.setText("📤  Export")
         self._force_rescan_btn.setText(t("force_rescan"))
         self._no_face_btn.setText(t("view_no_face"))
         self._settings_btn.setText(t("settings"))
@@ -589,38 +585,19 @@ class MainWindow(QMainWindow):
     # ------------------------------------------------------------------
 
     @Slot()
-    def _on_export_csv(self) -> None:
-        path, _ = QFileDialog.getSaveFileName(
-            self, t("export_csv"), "export.csv", "CSV Files (*.csv)"
+    def _on_open_export(self) -> None:
+        person_name: Optional[str] = None
+        if self._current_person_id is not None:
+            with session_scope() as session:
+                p = session.get(Person, self._current_person_id)
+                if p:
+                    person_name = p.name
+        dlg = ExportDialog(
+            current_person_id=self._current_person_id,
+            current_person_name=person_name,
+            parent=self,
         )
-        if not path:
-            return
-        with session_scope() as session:
-            out = ExportService(session).export_csv(
-                target_path=path, person_id=self._current_person_id
-            )
-        QMessageBox.information(self, t("export_done"), t("export_csv_saved", path=out))
-
-    @Slot()
-    def _on_export_images(self) -> None:
-        if self._current_person_id is None:
-            QMessageBox.information(self, t("no_person_title"), t("no_person_msg"))
-            return
-
-        folder = QFileDialog.getExistingDirectory(
-            self, t("export_images"), str(Path.home())
-        )
-        if not folder:
-            return
-
-        with session_scope() as session:
-            n = ExportService(session).export_person_images(
-                person_id=self._current_person_id, target_dir=folder
-            )
-
-        QMessageBox.information(
-            self, t("export_done"), t("exported_n", n=n, folder=folder)
-        )
+        dlg.exec()
 
     # ------------------------------------------------------------------
     # Helpers
@@ -639,6 +616,7 @@ class MainWindow(QMainWindow):
                 session.query(Person).order_by(Person.name).all()
             )
             for p in persons:
-                _ = p.faces  # noqa: F841
+                for f in p.faces:
+                    _ = f.image  # noqa: F841
             self._sidebar.populate(persons)
         log.debug("Sidebar refreshed: %d person(s)", len(persons))

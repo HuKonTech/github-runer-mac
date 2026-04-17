@@ -27,17 +27,13 @@ from app.db.models import Face
 
 log = logging.getLogger(__name__)
 
-_MAX_PREVIEW_W = 600
-_MAX_PREVIEW_H = 500
 
-
-def _bgr_to_qpixmap(img_bgr: np.ndarray, max_w: int, max_h: int) -> QPixmap:
-    """Convert a BGR numpy array to a QPixmap scaled to fit *max_w*×*max_h*."""
+def _bgr_to_qpixmap(img_bgr: np.ndarray) -> QPixmap:
+    """Convert a BGR numpy array to a full-resolution QPixmap."""
     rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
     h, w, ch = rgb.shape
     qimg = QImage(rgb.data, w, h, ch * w, QImage.Format_RGB888)
-    pixmap = QPixmap.fromImage(qimg)
-    return pixmap.scaled(max_w, max_h, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+    return QPixmap.fromImage(qimg)
 
 
 class PreviewPanel(QWidget):
@@ -46,6 +42,7 @@ class PreviewPanel(QWidget):
     def __init__(self, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
         self._current_image_path: Optional[str] = None
+        self._full_pixmap: Optional[QPixmap] = None
         self._build_ui()
 
     def _build_ui(self) -> None:
@@ -94,11 +91,9 @@ class PreviewPanel(QWidget):
             self._image_label.setText(f"Cannot load:\n{img_path}")
             return
 
-        # Draw a rectangle around the selected face
         x, y, w, h = face.bbox_x, face.bbox_y, face.bbox_w, face.bbox_h
         cv2.rectangle(img_bgr, (x, y), (x + w, y + h), (50, 200, 50), 3)
 
-        # Draw all other faces from the same image in a muted colour
         for other_face in face.image.faces:
             if other_face.id == face.id:
                 continue
@@ -108,17 +103,30 @@ class PreviewPanel(QWidget):
             )
             cv2.rectangle(img_bgr, (ox, oy), (ox + ow, oy + oh), (100, 100, 100), 1)
 
-        pixmap = _bgr_to_qpixmap(img_bgr, _MAX_PREVIEW_W, _MAX_PREVIEW_H)
-        self._image_label.setPixmap(pixmap)
+        self._full_pixmap = _bgr_to_qpixmap(img_bgr)
+        self._update_scaled_pixmap()
         self._path_label.setText(img_path)
         self._open_btn.setEnabled(True)
 
     def clear(self) -> None:
+        self._full_pixmap = None
         self._image_label.clear()
         self._image_label.setText("Click a face thumbnail to preview")
         self._path_label.setText("")
         self._open_btn.setEnabled(False)
         self._current_image_path = None
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        self._update_scaled_pixmap()
+
+    def _update_scaled_pixmap(self) -> None:
+        if self._full_pixmap is None:
+            return
+        w = self._image_label.width()
+        h = self._image_label.height()
+        scaled = self._full_pixmap.scaled(w, h, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+        self._image_label.setPixmap(scaled)
 
     # ------------------------------------------------------------------
 

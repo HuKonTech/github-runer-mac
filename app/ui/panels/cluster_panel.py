@@ -6,9 +6,10 @@ import logging
 from pathlib import Path
 from typing import Optional
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (
+    QApplication,
     QGridLayout,
     QLabel,
     QScrollArea,
@@ -23,6 +24,54 @@ log = logging.getLogger(__name__)
 
 _THUMB_SIZE = 96
 _THUMB_COLS = 5
+_ZOOM_SIZE = 280
+
+
+class _ZoomPopup(QLabel):
+    """Floating popup that shows a larger version of a face crop."""
+
+    def __init__(self) -> None:
+        super().__init__(None, Qt.ToolTip | Qt.FramelessWindowHint)
+        self.setAttribute(Qt.WA_TransparentForMouseEvents)
+        self.setAlignment(Qt.AlignCenter)
+        self.setStyleSheet(
+            "QLabel { background: #1a1a1a; border: 2px solid #88aaff; "
+            "border-radius: 6px; padding: 4px; }"
+        )
+        self.setFixedSize(_ZOOM_SIZE + 8, _ZOOM_SIZE + 8)
+
+    def show_for(self, crop_path: Optional[str], global_pos) -> None:
+        if crop_path and Path(crop_path).exists():
+            pixmap = QPixmap(crop_path).scaled(
+                _ZOOM_SIZE, _ZOOM_SIZE,
+                Qt.KeepAspectRatio,
+                Qt.SmoothTransformation,
+            )
+            self.setPixmap(pixmap)
+        else:
+            self.setText("?")
+
+        screen = QApplication.primaryScreen().geometry()
+        x = global_pos.x() + 16
+        y = global_pos.y() - self.height() // 2
+        if x + self.width() > screen.right():
+            x = global_pos.x() - self.width() - 16
+        if y < screen.top():
+            y = screen.top() + 4
+        if y + self.height() > screen.bottom():
+            y = screen.bottom() - self.height() - 4
+        self.move(x, y)
+        self.show()
+
+
+_zoom_popup = None
+
+
+def _get_zoom_popup() -> _ZoomPopup:
+    global _zoom_popup
+    if _zoom_popup is None:
+        _zoom_popup = _ZoomPopup()
+    return _zoom_popup
 
 
 class FaceThumbnail(QLabel):
@@ -37,6 +86,7 @@ class FaceThumbnail(QLabel):
     def __init__(self, face: Face, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
         self.face_id = face.id
+        self._crop_path = face.crop_path
         self._load_pixmap(face.crop_path)
         self.setFixedSize(_THUMB_SIZE, _THUMB_SIZE)
         self.setAlignment(Qt.AlignCenter)
@@ -51,6 +101,7 @@ class FaceThumbnail(QLabel):
             "QLabel { border: 1px solid #555; border-radius: 4px; }"
             "QLabel:hover { border: 2px solid #88aaff; }"
         )
+        self.setMouseTracking(True)
 
     def _load_pixmap(self, crop_path: Optional[str]) -> None:
         if crop_path and Path(crop_path).exists():
@@ -67,6 +118,15 @@ class FaceThumbnail(QLabel):
                 "border: 1px solid #555; font-size: 20px; "
                 "border-radius: 4px; }"
             )
+
+    def enterEvent(self, event) -> None:
+        super().enterEvent(event)
+        popup = _get_zoom_popup()
+        popup.show_for(self._crop_path, self.mapToGlobal(self.rect().center()))
+
+    def leaveEvent(self, event) -> None:
+        super().leaveEvent(event)
+        _get_zoom_popup().hide()
 
     def mousePressEvent(self, event) -> None:  # noqa: ANN001
         super().mousePressEvent(event)
