@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Optional
 
-from PySide6.QtCore import QSettings, QThread, Signal
+from PySide6.QtCore import Qt, QSettings, QThread, Signal
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -98,7 +98,7 @@ class SettingsDialog(QDialog):
         upd_layout = QVBoxLayout(upd_group)
 
         self._update_status_label = QLabel(f"Jelenlegi verzió / Current version: <b>v{__version__}</b>")
-        self._update_status_label.setTextFormat(1)  # RichText
+        self._update_status_label.setTextFormat(Qt.TextFormat.RichText)
         upd_layout.addWidget(self._update_status_label)
 
         self._notify_check = QCheckBox(

@@ -83,8 +83,19 @@ def clean() -> None:
     shutil.rmtree(DIST_DIR / f"{APP_NAME}.app", ignore_errors=True)
 
 
+def inject_version(version: str) -> None:
+    """Overwrite app/__init__.py with the build-time version."""
+    init_path = ROOT / "app" / "__init__.py"
+    init_path.write_text(
+        f'"""Face-Local: offline face grouping and person labeling application."""\n\n'
+        f'__version__ = "{version}"\n',
+        encoding="utf-8",
+    )
+
+
 def main() -> None:
-    parse_args()
+    args = parse_args()
+    inject_version(args.version)
     clean()
     build()
 
