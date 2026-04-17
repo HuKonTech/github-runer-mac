@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
     QSplitter,
     QStatusBar,
     QSystemTrayIcon,
+    QTabWidget,
     QToolBar,
     QVBoxLayout,
     QWidget,
@@ -40,6 +41,7 @@ from app.ui.dialogs.rename_dialog import RenameDialog
 from app.ui.dialogs.settings_dialog import SettingsDialog
 from app.ui.i18n import t
 from app.ui.panels.cluster_panel import ClusterPanel
+from app.ui.panels.collage_panel import CollagePanel
 from app.ui.panels.log_panel import LogPanel
 from app.ui.panels.preview_panel import PreviewPanel
 from app.ui.panels.sidebar_panel import SidebarPanel
@@ -138,11 +140,36 @@ class MainWindow(QMainWindow):
 
         tb.addSeparator()
 
+        tb.addSeparator()
+
+        self._collage_btn = QPushButton("🖼 Kollázs import…")
+        self._collage_btn.clicked.connect(self._on_import_collage)
+        self._collage_btn.setToolTip(
+            "Picasa kollázs (.cxf/.cfx) beolvasása / Import Picasa collage file"
+        )
+        tb.addWidget(self._collage_btn)
+
+        self._collage_html_btn = QPushButton("🌐 Kollázs HTML export")
+        self._collage_html_btn.clicked.connect(self._on_export_collage_html)
+        tb.addWidget(self._collage_html_btn)
+
+        tb.addSeparator()
+
         self._update_btn = QPushButton("🔄 Frissítés keresése…")
         self._update_btn.clicked.connect(self._on_check_update_manual)
         tb.addWidget(self._update_btn)
 
     def _build_central(self) -> None:
+        # Outer tabs: Arcok | Kollázs
+        self._tabs = QTabWidget()
+        self._tabs.setTabPosition(QTabWidget.North)
+        self._tabs.setDocumentMode(True)
+
+        # --- Tab 0: Arcfelismerés (existing layout) ---
+        face_widget = QWidget()
+        face_layout = QVBoxLayout(face_widget)
+        face_layout.setContentsMargins(0, 0, 0, 0)
+
         splitter = QSplitter(Qt.Horizontal)
 
         self._sidebar = SidebarPanel()
@@ -173,7 +200,14 @@ class MainWindow(QMainWindow):
         splitter.setStretchFactor(2, 3)
         splitter.setSizes([320, 300, 660])
 
-        self.setCentralWidget(splitter)
+        face_layout.addWidget(splitter)
+        self._tabs.addTab(face_widget, "👤 Arcfelismerés")
+
+        # --- Tab 1: Kollázs nézet ---
+        self._collage_panel = CollagePanel()
+        self._tabs.addTab(self._collage_panel, "🖼 Kollázs")
+
+        self.setCentralWidget(self._tabs)
 
     def _build_action_row(self) -> QHBoxLayout:
         layout = QHBoxLayout()
@@ -594,6 +628,84 @@ class MainWindow(QMainWindow):
 
         self._status_label.setText(t("recluster_done", n=n))
         self._refresh_persons()
+
+    # ------------------------------------------------------------------
+    # Collage import / export
+    # ------------------------------------------------------------------
+
+    @Slot()
+    def _on_import_collage(self) -> None:
+        """Import one or more Picasa collage files (.cxf / .cfx)."""
+        files, _ = QFileDialog.getOpenFileNames(
+            self,
+            "Kollázs fájl megnyitása / Open collage file",
+            str(Path.home()),
+            "Picasa kollázs (*.cxf *.cfx);;Minden fájl (*)",
+        )
+        if not files:
+            return
+
+        # Optionally ask for an extra search root to resolve Windows paths
+        search_root = QFileDialog.getExistingDirectory(
+            self,
+            "Keresési gyökérmappa (opcionális) — hagyd üresen, ha nem kell\n"
+            "Extra search root for resolving Windows paths (optional)",
+            str(Path.home()),
+        )
+        search_roots = [search_root] if search_root else []
+
+        imported, skipped, errors = 0, 0, []
+        for fpath in files:
+            try:
+                with session_scope() as session:
+                    from app.services.collage_service import CollageService
+                    svc = CollageService(session)
+                    collage = svc.import_collage(fpath, search_roots=search_roots)
+                    log.info(
+                        "Kollázs importálva: %s  (%d elem, %d hiányzó)",
+                        collage.album_title or fpath,
+                        len(collage.nodes),
+                        sum(1 for n in collage.nodes if n.src_missing),
+                    )
+                imported += 1
+            except Exception as exc:
+                log.error("Kollázs import hiba (%s): %s", fpath, exc)
+                errors.append(f"{Path(fpath).name}: {exc}")
+
+        # Switch to collage tab and refresh
+        self._collage_panel.refresh_collage_list()
+        self._tabs.setCurrentIndex(1)
+
+        msg = f"{imported} kollázs importálva."
+        if errors:
+            msg += "\n\nHibák:\n" + "\n".join(errors)
+            QMessageBox.warning(self, "Kollázs import", msg)
+        else:
+            self._status_label.setText(msg)
+            log.info(msg)
+
+    @Slot()
+    def _on_export_collage_html(self) -> None:
+        """Export all collages to a static HTML gallery."""
+        target = QFileDialog.getExistingDirectory(
+            self,
+            "HTML export mappa / Select export folder",
+            str(Path.home()),
+        )
+        if not target:
+            return
+
+        try:
+            with session_scope() as session:
+                from app.services.export_service import ExportService
+                out = ExportService(session).export_collage_html(target)
+            QMessageBox.information(
+                self, "Kollázs HTML export",
+                f"Statikus weboldal elkészült:\n{out}"
+            )
+        except Exception as exc:
+            log.exception("Collage HTML export failed")
+            QMessageBox.critical(self, "Export hiba", str(exc))
 
     # ------------------------------------------------------------------
     # Export

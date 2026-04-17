@@ -21,7 +21,7 @@ import cv2
 
 from sqlalchemy.orm import Session
 
-from app.db.models import Face, Person
+from app.db.models import Collage, CollageNode, Face, Image, Person
 
 log = logging.getLogger(__name__)
 
@@ -264,6 +264,145 @@ class ExportService:
         return out
 
     # ------------------------------------------------------------------
+    # Collage HTML export
+    # ------------------------------------------------------------------
+
+    def export_collage_html(
+        self,
+        target_dir: str,
+        collage_id: Optional[int] = None,
+    ) -> Path:
+        """Generate a static HTML page for one or all collages.
+
+        The page renders each collage as a full-width image with:
+        * SVG overlay showing node boundaries,
+        * hover tooltip (desktop) / tap panel (mobile) per node,
+        * person names shown on face bounding boxes,
+        * full-text search by person name.
+
+        Args:
+            target_dir:  Output directory (created if absent).
+            collage_id:  Export only this collage.  ``None`` → all collages.
+
+        Returns:
+            Path to the generated ``collage_index.html``.
+        """
+        from app.services.collage_service import CollageService
+
+        out = Path(target_dir)
+        out.mkdir(parents=True, exist_ok=True)
+        img_dir = out / "collage_images"
+        img_dir.mkdir(exist_ok=True)
+
+        svc = CollageService(self._session)
+
+        if collage_id is not None:
+            c = svc.get_collage(collage_id)
+            collages = [c] if c else []
+        else:
+            collages = svc.list_collages()
+
+        collage_records = []
+        render_h = 800
+
+        for collage in collages:
+            cw = collage.format_width or 2858
+            ch = collage.format_height or 1000
+            scale = render_h / ch
+            render_w = int(cw * scale)
+
+            # Render the collage image
+            canvas = svc.render_collage_image(
+                collage, render_h=render_h, draw_borders=False, draw_faces=False
+            )
+            safe = _safe_filename(collage.album_title or f"collage_{collage.id}")
+            img_name = f"{safe}_{collage.id}.jpg"
+            if canvas is not None:
+                cv2.imwrite(str(img_dir / img_name), canvas)
+            else:
+                img_name = ""
+
+            # Build node data with face projections
+            from app.services.collage_parser import (
+                CollageNodeData, project_face_to_collage,
+            )
+            nodes_json = []
+            for node in collage.nodes:
+                nd = CollageNodeData(
+                    rel_x=node.rel_x, rel_y=node.rel_y,
+                    rel_w=node.rel_w, rel_h=node.rel_h,
+                    theta=node.theta, scale=node.scale,
+                )
+                px = int(node.rel_x * render_w)
+                py = int(node.rel_y * render_h)
+                pw = max(int(node.rel_w * render_w), 1)
+                ph = max(int(node.rel_h * render_h), 1)
+
+                from pathlib import Path as _P
+                src_name = (
+                    _P(node.src_raw.replace("\\", "/")).name
+                    if node.src_raw else ""
+                )
+
+                face_rects = []
+                if node.image_id:
+                    image = self._session.get(Image, node.image_id)
+                    if image and image.width and image.height:
+                        for face in (
+                            self._session.query(Face)
+                            .filter(Face.image_id == node.image_id)
+                            .all()
+                        ):
+                            bbox = project_face_to_collage(
+                                (face.bbox_x, face.bbox_y, face.bbox_w, face.bbox_h),
+                                image.width, image.height,
+                                nd, render_w, render_h,
+                            )
+                            if bbox:
+                                person = self._session.get(Person, face.person_id) if face.person_id else None
+                                face_rects.append({
+                                    "x": bbox[0], "y": bbox[1],
+                                    "w": bbox[2], "h": bbox[3],
+                                    "name": person.name if person else "",
+                                    "notes": person.notes if person else "",
+                                })
+
+                year = node.year or ""
+                location = node.location or ""
+                event_name = node.event_name or ""
+                notes = node.notes or ""
+
+                nodes_json.append({
+                    "x": px, "y": py, "w": pw, "h": ph,
+                    "src": src_name,
+                    "uid": node.node_uid or "",
+                    "missing": node.src_missing,
+                    "year": year,
+                    "location": location,
+                    "event": event_name,
+                    "notes": notes,
+                    "faces": face_rects,
+                })
+
+            collage_records.append({
+                "id": collage.id,
+                "title": collage.album_title or f"Kollázs #{collage.id}",
+                "date": collage.album_date or "",
+                "img": f"collage_images/{img_name}" if img_name else "",
+                "width": render_w,
+                "height": render_h,
+                "nodes": nodes_json,
+            })
+
+        js_data = json.dumps(collage_records, ensure_ascii=False, indent=1)
+        html_out = _COLLAGE_HTML_TEMPLATE.replace("__COLLAGES_JSON__", js_data)
+        html_path = out / "collage_index.html"
+        html_path.write_text(html_out, encoding="utf-8")
+
+        log.info("Collage HTML export: %d collage(s) → %s", len(collages), html_path)
+        return html_path
+
+    # ------------------------------------------------------------------
     # Private helpers
     # ------------------------------------------------------------------
 
@@ -445,6 +584,192 @@ function updateCount(){
 }
 
 buildCards();
+</script>
+</body>
+</html>
+"""
+
+
+def _safe_filename(name: str) -> str:
+    import re
+    return re.sub(r'[\\/:*?"<>|]', "_", name)[:120] or "collage"
+
+
+# ---------------------------------------------------------------------------
+# Collage static HTML template
+# ---------------------------------------------------------------------------
+
+_COLLAGE_HTML_TEMPLATE = """<!DOCTYPE html>
+<html lang="hu">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kollázs Galéria</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:#111;color:#ddd;font-family:system-ui,sans-serif}
+  header{background:#1a1a1a;padding:14px 20px;border-bottom:1px solid #333;
+         display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+  header h1{font-size:1.2rem;color:#88aaff;white-space:nowrap}
+  #search{flex:1;min-width:180px;padding:8px 12px;background:#222;
+          border:1px solid #444;border-radius:6px;color:#fff;font-size:1rem}
+  #search:focus{outline:none;border-color:#88aaff}
+  #count{font-size:.85rem;color:#888;white-space:nowrap}
+  .collage-block{margin:24px 16px;border:1px solid #333;border-radius:8px;overflow:hidden}
+  .collage-header{background:#1c1c1c;padding:12px 16px;border-bottom:1px solid #333}
+  .collage-title{font-size:1.05rem;font-weight:bold;color:#aaccff}
+  .collage-date{font-size:.85rem;color:#777;margin-top:2px}
+  .collage-canvas{position:relative;overflow:hidden;background:#222;display:block}
+  .collage-canvas img.base-img{display:block;width:100%;height:auto}
+  .collage-canvas svg.overlay{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:all}
+  .node-rect{fill:transparent;stroke:rgba(80,160,255,.5);stroke-width:1.5;cursor:pointer;transition:stroke .15s}
+  .node-rect:hover{stroke:rgba(255,200,60,.9);stroke-width:2.5}
+  .node-rect.missing{stroke:rgba(200,60,60,.7)}
+  .face-rect{fill:transparent;stroke:rgba(50,220,50,.8);stroke-width:1.5;pointer-events:none}
+  #tip{display:none;position:fixed;z-index:200;background:#1a1a2e;border:1px solid #88aaff;
+       border-radius:8px;padding:12px 16px;max-width:320px;font-size:.88rem;
+       color:#ddd;box-shadow:0 4px 24px rgba(0,0,0,.7);line-height:1.6}
+  #tip .tip-title{font-weight:bold;color:#aaccff;margin-bottom:6px}
+  #tip .tip-warn{color:#e57373}
+  #mob-panel{display:none;position:fixed;bottom:0;left:0;right:0;z-index:300;
+             background:#1a1a2e;border-top:2px solid #88aaff;padding:16px;
+             max-height:50vh;overflow-y:auto;font-size:.92rem;line-height:1.7}
+  #mob-panel-close{float:right;font-size:1.4rem;cursor:pointer;color:#aaa;margin-top:-4px}
+  #mob-panel .tip-title{font-weight:bold;color:#aaccff;font-size:1rem;margin-bottom:8px;display:block}
+</style>
+</head>
+<body>
+<header>
+  <h1>\U0001f5bc Kollázs Gal\u00e9ria</h1>
+  <input id="search" type="text" placeholder="Szem\u00e9ly neve\u2026" oninput="filterByPerson()">
+  <span id="count"></span>
+</header>
+<div id="collages"></div>
+<div id="tip"></div>
+<div id="mob-panel">
+  <span id="mob-panel-close" onclick="closeMob()">\u2715</span>
+  <div id="mob-content"></div>
+</div>
+<script>
+const COLLAGES = __COLLAGES_JSON__;
+const tip = document.getElementById('tip');
+let tipTimer;
+function showTip(evt, html){clearTimeout(tipTimer);tip.innerHTML=html;tip.style.display='block';moveTip(evt);}
+function moveTip(evt){
+  const mx=evt.clientX,my=evt.clientY,tw=tip.offsetWidth,th=tip.offsetHeight,ww=window.innerWidth,wh=window.innerHeight;
+  tip.style.left=(mx+tw+20>ww?mx-tw-12:mx+14)+'px';
+  tip.style.top=(my+th+20>wh?my-th-12:my+14)+'px';
+}
+function hideTip(){tipTimer=setTimeout(()=>{tip.style.display='none';},120);}
+function showMob(html){document.getElementById('mob-content').innerHTML=html;document.getElementById('mob-panel').style.display='block';}
+function closeMob(){document.getElementById('mob-panel').style.display='none';}
+function nodeInfoHtml(node){
+  let h='<div class="tip-title">'+(node.src||'\u2014')+'</div>';
+  if(node.missing)h+='<div class="tip-warn">\u26a0 Forr\u00e1sf\u00e1jl hi\u00e1nyzik</div>';
+  if(node.year)h+='<div><b>\u00c9v:</b> '+node.year+'</div>';
+  if(node.location)h+='<div><b>Helysz\u00edn:</b> '+node.location+'</div>';
+  if(node.event)h+='<div><b>Esem\u00e9ny:</b> '+node.event+'</div>';
+  if(node.notes)h+='<div><b>Megjegyz\u00e9s:</b> '+node.notes+'</div>';
+  if(node.faces&&node.faces.length){
+    const names=[...new Set(node.faces.map(f=>f.name).filter(Boolean))];
+    if(names.length)h+='<div><b>Szem\u00e9lyek:</b> '+names.join(', ')+'</div>';
+  }
+  return h;
+}
+function filterByPerson(){
+  const q=document.getElementById('search').value.toLowerCase().trim();
+  document.querySelectorAll('[data-collage-id]').forEach(block=>{
+    if(!q){block.style.display='';return;}
+    const cid=parseInt(block.dataset.collageId);
+    const col=COLLAGES.find(c=>c.id===cid);
+    if(!col){block.style.display='none';return;}
+    const match=col.nodes.some(n=>n.faces&&n.faces.some(f=>f.name&&f.name.toLowerCase().includes(q)));
+    block.style.display=match?'':'none';
+    block.querySelectorAll('.node-rect').forEach(r=>{
+      const nidx=parseInt(r.dataset.nidx);
+      const node=col.nodes[nidx];
+      const has=node&&node.faces&&node.faces.some(f=>f.name&&f.name.toLowerCase().includes(q));
+      r.style.stroke=has?'rgba(255,200,60,.95)':'';
+      r.style.strokeWidth=has?'3':'';
+    });
+  });
+  updateCount();
+}
+function updateCount(){
+  const total=document.querySelectorAll('[data-collage-id]').length;
+  const vis=document.querySelectorAll('[data-collage-id]:not([style*="none"])').length;
+  document.getElementById('count').textContent=vis+' / '+total+' koll\u00e1zs';
+}
+function buildSvg(col,svgEl){
+  svgEl.setAttribute('viewBox','0 0 '+col.width+' '+col.height);
+  svgEl.setAttribute('preserveAspectRatio','xMidYMid meet');
+  col.nodes.forEach((node,nidx)=>{
+    const rect=document.createElementNS('http://www.w3.org/2000/svg','rect');
+    rect.setAttribute('x',node.x);rect.setAttribute('y',node.y);
+    rect.setAttribute('width',node.w);rect.setAttribute('height',node.h);
+    rect.classList.add('node-rect');
+    if(node.missing)rect.classList.add('missing');
+    rect.dataset.nidx=nidx;
+    const infoHtml=nodeInfoHtml(node);
+    const isMob=()=>window.matchMedia('(hover:none)').matches;
+    rect.addEventListener('mouseenter',e=>{if(!isMob())showTip(e,infoHtml);});
+    rect.addEventListener('mousemove',e=>{if(!isMob())moveTip(e);});
+    rect.addEventListener('mouseleave',()=>hideTip());
+    rect.addEventListener('click',e=>{e.stopPropagation();if(isMob())showMob(infoHtml);else showTip(e,infoHtml);});
+    svgEl.appendChild(rect);
+    if(node.faces){
+      node.faces.forEach(f=>{
+        const fr=document.createElementNS('http://www.w3.org/2000/svg','rect');
+        fr.setAttribute('x',f.x);fr.setAttribute('y',f.y);
+        fr.setAttribute('width',f.w);fr.setAttribute('height',f.h);
+        fr.classList.add('face-rect');
+        svgEl.appendChild(fr);
+        if(f.name){
+          const txt=document.createElementNS('http://www.w3.org/2000/svg','text');
+          txt.setAttribute('x',f.x+2);
+          txt.setAttribute('y',Math.max(f.y-3,12));
+          txt.setAttribute('font-size',Math.max(9,Math.min(14,f.w/5)));
+          txt.setAttribute('fill','rgba(50,220,50,.95)');
+          txt.setAttribute('pointer-events','none');
+          txt.textContent=f.name;
+          svgEl.appendChild(txt);
+        }
+      });
+    }
+  });
+}
+function buildAll(){
+  const wrap=document.getElementById('collages');
+  COLLAGES.forEach(col=>{
+    const block=document.createElement('div');
+    block.className='collage-block';
+    block.dataset.collageId=col.id;
+    const hdr=document.createElement('div');
+    hdr.className='collage-header';
+    hdr.innerHTML='<div class="collage-title">'+col.title+'</div>'
+                 +(col.date?'<div class="collage-date">'+col.date+'</div>':'');
+    block.appendChild(hdr);
+    const canvas=document.createElement('div');
+    canvas.className='collage-canvas';
+    if(col.img){
+      const img=document.createElement('img');
+      img.className='base-img';img.src=col.img;img.alt=col.title;
+      canvas.appendChild(img);
+    }
+    const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');
+    svg.classList.add('overlay');
+    buildSvg(col,svg);
+    canvas.appendChild(svg);
+    block.appendChild(canvas);
+    wrap.appendChild(block);
+  });
+  updateCount();
+}
+document.addEventListener('click',e=>{
+  const p=document.getElementById('mob-panel');
+  if(p.style.display!=='none'&&!p.contains(e.target))closeMob();
+});
+buildAll();
 </script>
 </body>
 </html>

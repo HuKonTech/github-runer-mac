@@ -195,6 +195,122 @@ class Face(Base):
 # FaceCorrection
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# Collage
+# ---------------------------------------------------------------------------
+
+class Collage(Base):
+    """A Picasa-style collage imported from a .cxf / .cfx file."""
+
+    __tablename__ = "collages"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+
+    # Stable identifier from the XML albumUID attribute (may be empty)
+    collage_uid: Mapped[Optional[str]] = mapped_column(String(64), nullable=True, index=True)
+
+    # Absolute path of the imported .cxf/.cfx file
+    source_file: Mapped[str] = mapped_column(Text, unique=True, nullable=False)
+
+    album_title: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    album_date: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+
+    # format="2858:1000" → stored separately
+    format_width: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    format_height: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+
+    orientation: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    bg_color: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)
+    spacing: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+
+    nodes: Mapped[List["CollageNode"]] = relationship(
+        "CollageNode", back_populates="collage", cascade="all, delete-orphan",
+        order_by="CollageNode.id",
+    )
+
+    def __repr__(self) -> str:
+        return f"<Collage id={self.id} title={self.album_title!r}>"
+
+
+class CollageNode(Base):
+    """A single image cell inside a Picasa collage."""
+
+    __tablename__ = "collage_nodes"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+
+    collage_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("collages.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+
+    # UID from the XML <uid> element
+    node_uid: Mapped[Optional[str]] = mapped_column(String(64), nullable=True, index=True)
+
+    # Relative position/size in [0, 1] coordinates (as parsed from XML)
+    rel_x: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    rel_y: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    rel_w: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    rel_h: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+
+    # Rotation in radians; 0 = no rotation
+    theta: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+
+    # Picasa zoom scale (100 = fit, 133 = 33% zoom-in)
+    scale: Mapped[float] = mapped_column(Float, nullable=False, default=100.0)
+
+    # Picasa theme string (e.g. "noborder")
+    theme: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+
+    # Raw src path as it appears in the XML (Windows-style, may have [D]\ prefix)
+    src_raw: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    # Resolved absolute path on the current system (None if not resolved)
+    src_resolved: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    # True if the source file could not be located on disk
+    src_missing: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    # FK to Image record if this source file has been scanned
+    image_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("images.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+
+    # Optional user-entered metadata
+    year: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)
+    location: Mapped[Optional[str]] = mapped_column(String(256), nullable=True)
+    event_name: Mapped[Optional[str]] = mapped_column(String(256), nullable=True)
+    notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+
+    collage: Mapped["Collage"] = relationship("Collage", back_populates="nodes")
+    image: Mapped[Optional["Image"]] = relationship("Image")
+
+    def pixel_bbox(self, collage_w: int, collage_h: int) -> tuple[int, int, int, int]:
+        """Return (px, py, pw, ph) in pixels for a given collage canvas size."""
+        return (
+            round(self.rel_x * collage_w),
+            round(self.rel_y * collage_h),
+            round(self.rel_w * collage_w),
+            round(self.rel_h * collage_h),
+        )
+
+    def __repr__(self) -> str:
+        return f"<CollageNode id={self.id} uid={self.node_uid!r} src={self.src_raw!r}>"
+
+
+# ---------------------------------------------------------------------------
+# FaceCorrection
+# ---------------------------------------------------------------------------
+
 class FaceCorrection(Base):
     """Manual same / not-same judgements from the user.
 
