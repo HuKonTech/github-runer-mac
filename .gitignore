@@ -218,6 +218,15 @@ playground.xcworkspace
 *.pdb
 
 ### C++
+
+### Python / Local runtime
+.venv/
+venv/
+__pycache__/
+*.pyc
+
+### Local model assets
+models/sface.onnx
 # Object files
 *.o
 *.obj

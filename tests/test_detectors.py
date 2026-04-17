@@ -48,7 +48,7 @@ class TestFactoryFallback:
         from app.detectors import factory
 
         # Monkeypatch probe_coral to return False
-        monkeypatch.setattr(factory, "probe_coral", lambda: False)
+        monkeypatch.setattr(factory, "probe_coral", lambda *args, **kwargs: False)
 
         config = DetectionConfig(coral_model_path="/nonexistent/model.tflite")
         detector = factory.create_detector(config)

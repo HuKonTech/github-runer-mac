@@ -31,6 +31,12 @@ _STRINGS: Dict[str, Dict[str, str]] = {
     "remove_face":        {"en": "Remove Selected Face", "hu": "Kiválasztott arc eltávolítása"},
     "reassign_face":      {"en": "Reassign Face …", "hu": "Arc áthelyezése …"},
     "recluster_all":      {"en": "Re-cluster All", "hu": "Újra csoportosítás"},
+    "force_rescan":       {"en": "Force Full Rescan", "hu": "Teljes újrabeolvasás"},
+    "force_rescan_title": {"en": "Force Full Rescan", "hu": "Teljes újrabeolvasás"},
+    "force_rescan_msg":   {"en": "Delete all detected faces and re-run detection on all {n} images?\n"
+                                 "This will use the current detector (Coral TPU if available).",
+                           "hu": "Törli az összes felismert arcot és újra futtatja a detektálást mind a(z) {n} képen?\n"
+                                 "A jelenlegi detektor lesz használva (Coral TPU ha elérhető)."},
     "people_label":       {"en": "People", "hu": "Személyek"},
     "search_placeholder": {"en": "Search person name …", "hu": "Személy neve …"},
     "n_persons":          {"en": "{n} person(s)", "hu": "{n} személy"},
@@ -118,6 +124,30 @@ _STRINGS: Dict[str, Dict[str, str]] = {
     "tpu_error":         {"en": "Error: {msg}", "hu": "Hiba: {msg}"},
     "tpu_ok_label":      {"en": "TPU ready ✓", "hu": "TPU kész ✓"},
     "tpu_warn_label":    {"en": "TPU not available", "hu": "TPU nem elérhető"},
+    "tpu_inference_ok":  {"en": "✓ Test inference succeeded — TPU is actively accelerating detection",
+                          "hu": "✓ Teszt következtetés sikeres — a TPU aktívan gyorsítja a detektálást"},
+    "tpu_inference_fail": {"en": "✗ Library loads but device is NOT responding. Detection will use CPU.",
+                           "hu": "✗ A könyvtár betöltődik, de az eszköz NEM válaszol. A detektálás CPU-n fut."},
+    "tpu_phantom_tip":    {"en": "Tip: unplug the Coral USB device, wait 5 seconds, plug it back in, "
+                                  "then click 'Re-check' below. On macOS also check:\n"
+                                  "  System Settings → Privacy & Security → USB / Accessory Security",
+                           "hu": "Tipp: húzd ki a Coral USB eszközt, várj 5 másodpercet, dugd vissza, "
+                                  "majd kattints az 'Újraellenőrzés' gombra. macOS-en nézd meg:\n"
+                                  "  Rendszerbeállítások → Adatvédelem és biztonság → USB / Tartozék biztonság"},
+    "tpu_recheck":        {"en": "🔄 Re-check / Újraellenőrzés",
+                           "hu": "🔄 Újraellenőrzés / Re-check"},
+
+    # ── Image viewer / manual face marking ────────────────────────────────
+    "view_all_images":   {"en": "All Images", "hu": "Összes kép"},
+    "view_no_face":      {"en": "Images Without Faces", "hu": "Arc nélküli képek"},
+    "view_by_person":    {"en": "By Person", "hu": "Személy szerint"},
+    "n_images_no_face":  {"en": "{n} image(s) with no detected face",
+                          "hu": "{n} kép arc nélkül"},
+    "mark_face":         {"en": "Mark Face Manually", "hu": "Arc kézi jelölése"},
+    "mark_face_hint":    {"en": "Drag on the image to mark a face region.",
+                          "hu": "Húzd az egeret a képen az arc jelöléséhez."},
+    "mark_face_saved":   {"en": "Face saved. Assign it to a person from the sidebar.",
+                          "hu": "Arc mentve. Rendeld személyhez az oldalsávból."},
 }
 
 

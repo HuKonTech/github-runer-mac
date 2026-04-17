@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Face-Local
+Comment=Offline face grouping and person labeling
+Exec=/usr/bin/face-local
+Terminal=false
+Categories=Graphics;Utility;

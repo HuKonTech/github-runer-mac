@@ -169,13 +169,20 @@ class ClusteringService:
 
             label = label_map.get(fid, -1)
 
-            if label not in label_to_person:
+            if label == -1:
+                # Noise faces each get their own singleton person so different
+                # people are not merged into a single "Unknown" catch-all.
                 person = self._get_or_create_person(label, auto_counter)
-                if person.id not in {p.id for p in self._session.new} and person.id is None:
+                if person.id is None:
                     self._session.flush()
-                label_to_person[label] = person.id  # type: ignore[assignment]
-
-            face.person_id = label_to_person[label]
+                face.person_id = person.id
+            else:
+                if label not in label_to_person:
+                    person = self._get_or_create_person(label, auto_counter)
+                    if person.id is None:
+                        self._session.flush()
+                    label_to_person[label] = person.id  # type: ignore[assignment]
+                face.person_id = label_to_person[label]
 
         return len(label_to_person)
 

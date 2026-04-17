@@ -24,17 +24,17 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from app.config import AppConfig
+from app.config import AppConfig, save_db_path
 from app.db.database import init_db, session_scope
 from app.db.models import Face, Person
 from app.logging_setup import QLogHandler
 from app.services.clustering_service import ClusteringService
 from app.services.export_service import ExportService
 from app.services.identity_service import IdentityService
+from app.ui.dialogs.manual_face_dialog import NoFaceImagesDialog
 from app.ui.dialogs.merge_dialog import MergeDialog
 from app.ui.dialogs.rename_dialog import RenameDialog
 from app.ui.dialogs.settings_dialog import SettingsDialog
-from app.ui.dialogs.tpu_status_dialog import TpuStatusDialog
 from app.ui.i18n import t
 from app.ui.panels.cluster_panel import ClusterPanel
 from app.ui.panels.log_panel import LogPanel
@@ -114,9 +114,19 @@ class MainWindow(QMainWindow):
 
         tb.addSeparator()
 
-        self._tpu_btn = QPushButton()
-        self._tpu_btn.clicked.connect(self._on_tpu_status)
-        tb.addWidget(self._tpu_btn)
+        self._force_rescan_btn = QPushButton()
+        self._force_rescan_btn.clicked.connect(self._on_force_rescan)
+        self._force_rescan_btn.setToolTip(
+            "Törli az összes arcot és újra futtatja a detektálást / "
+            "Deletes all faces and re-runs detection"
+        )
+        tb.addWidget(self._force_rescan_btn)
+
+        self._no_face_btn = QPushButton()
+        self._no_face_btn.clicked.connect(self._on_no_face_images)
+        tb.addWidget(self._no_face_btn)
+
+        tb.addSeparator()
 
         self._settings_btn = QPushButton()
         self._settings_btn.clicked.connect(self._on_settings)
@@ -221,7 +231,8 @@ class MainWindow(QMainWindow):
         self._stop_btn.setText(t("stop"))
         self._export_csv_btn.setText(t("export_csv"))
         self._export_images_btn.setText(t("export_images"))
-        self._tpu_btn.setText(t("tpu_status"))
+        self._force_rescan_btn.setText(t("force_rescan"))
+        self._no_face_btn.setText(t("view_no_face"))
         self._settings_btn.setText(t("settings"))
         self._rename_btn.setText(t("rename_person"))
         self._merge_btn.setText(t("merge_into"))
@@ -257,6 +268,41 @@ class MainWindow(QMainWindow):
             log.info("Root folder selected: %s", folder)
 
     @Slot()
+    def _on_force_rescan(self) -> None:
+        if not hasattr(self, "_root_folder"):
+            QMessageBox.warning(self, t("no_folder_title"), t("no_folder_msg"))
+            return
+        if self._worker and self._worker.isRunning():
+            QMessageBox.information(self, t("busy_title"), t("busy_msg"))
+            return
+
+        with session_scope() as session:
+            from app.db.models import Image, Face
+            n_images = session.query(Image).count()
+
+        reply = QMessageBox.question(
+            self,
+            t("force_rescan_title"),
+            t("force_rescan_msg", n=n_images),
+            QMessageBox.Yes | QMessageBox.No,
+        )
+        if reply != QMessageBox.Yes:
+            return
+
+        with session_scope() as session:
+            from app.db.models import Image, Face
+            session.query(Face).delete()
+            session.query(Image).update({"detection_done": False, "embedding_done": False})
+
+        self._current_person_id = None
+        self._current_face_id = None
+        self._cluster_panel.clear()
+        self._preview_panel.clear()
+        self._refresh_persons()
+        log.info("Force rescan: reset all %d images.", n_images)
+        self._on_scan()
+
+    @Slot()
     def _on_scan(self) -> None:
         if not hasattr(self, "_root_folder"):
             QMessageBox.warning(self, t("no_folder_title"), t("no_folder_msg"))
@@ -284,9 +330,11 @@ class MainWindow(QMainWindow):
             self._worker.abort()
             self._stop_btn.setEnabled(False)
 
+
     @Slot()
-    def _on_tpu_status(self) -> None:
-        dlg = TpuStatusDialog(parent=self)
+    def _on_no_face_images(self) -> None:
+        dlg = NoFaceImagesDialog(config=self._config, parent=self)
+        dlg.changed.connect(self._refresh_persons)
         dlg.exec()
 
     @Slot()
@@ -300,6 +348,7 @@ class MainWindow(QMainWindow):
         if new_db and new_db != self._db_path:
             self._db_path = new_db
             self._config.storage.db_path = new_db
+            save_db_path(new_db)
             init_db(new_db)
             self._current_person_id = None
             self._current_face_id = None

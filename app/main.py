@@ -12,7 +12,8 @@ from __future__ import annotations
 import argparse
 import logging
 import sys
-from pathlib import Path
+
+from app.paths import default_log_file
 
 
 def parse_args() -> argparse.Namespace:
@@ -47,7 +48,7 @@ def main() -> None:
 
     setup_logging(
         level=logging.DEBUG if args.debug else logging.INFO,
-        log_file="data/face_local.log",
+        log_file=str(default_log_file()),
     )
 
     log = logging.getLogger(__name__)

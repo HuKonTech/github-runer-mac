@@ -13,6 +13,8 @@ from typing import List, Optional
 
 import yaml
 
+from app import paths
+
 
 @dataclass
 class DetectionConfig:
@@ -140,21 +142,46 @@ def load_config(config_path: Optional[str] = None) -> AppConfig:
         Populated :class:`AppConfig`.
     """
     cfg = AppConfig()
+    explicit_path = config_path
+    discovered_path: Optional[Path] = None
 
-    if config_path is None:
-        # Auto-discover config.yaml next to the script / in cwd
-        candidates = [
-            Path("config.yaml"),
-            Path("config.example.yaml"),
-            Path(os.environ.get("FACE_LOCAL_CONFIG", "config.yaml")),
-        ]
-        for c in candidates:
-            if c.exists():
-                config_path = str(c)
+    if config_path is not None:
+        candidate = Path(config_path).expanduser()
+        if candidate.exists():
+            discovered_path = candidate.resolve()
+    else:
+        env_config = os.environ.get("FACE_LOCAL_CONFIG")
+        candidates: list[Path] = []
+        if env_config:
+            candidates.append(Path(env_config).expanduser())
+
+        if paths.is_frozen():
+            candidates.extend(
+                [
+                    paths.user_config_dir() / "config.yaml",
+                    paths.bundle_root() / "config.yaml",
+                    paths.bundle_root() / "config.example.yaml",
+                    Path("config.yaml"),
+                    Path("config.example.yaml"),
+                ]
+            )
+        else:
+            candidates.extend(
+                [
+                    Path("config.yaml"),
+                    Path("config.example.yaml"),
+                ]
+            )
+
+        for candidate in candidates:
+            if candidate.exists():
+                discovered_path = candidate.resolve()
                 break
 
-    if config_path and Path(config_path).exists():
-        with open(config_path, "r", encoding="utf-8") as fh:
+    if discovered_path and discovered_path.exists():
+        cfg.base_dir = str(discovered_path.parent)
+
+        with open(discovered_path, "r", encoding="utf-8") as fh:
             raw: dict = yaml.safe_load(fh) or {}
 
         det = raw.get("detection", {})
@@ -203,5 +230,66 @@ def load_config(config_path: Optional[str] = None) -> AppConfig:
 
         if "base_dir" in raw:
             cfg.base_dir = raw["base_dir"]
+    elif paths.is_frozen():
+        cfg.base_dir = str(paths.bundle_root())
+
+    if paths.is_frozen():
+        _apply_frozen_storage_defaults(
+            cfg=cfg,
+            discovered_path=discovered_path,
+            explicit_path=explicit_path,
+        )
 
     return cfg
+
+
+def _apply_frozen_storage_defaults(
+    cfg: AppConfig,
+    discovered_path: Optional[Path],
+    explicit_path: Optional[str],
+) -> None:
+    """Redirect default writable paths out of the app bundle."""
+    bundle = paths.bundle_root().resolve()
+    use_user_data_dir = explicit_path is None and (
+        discovered_path is None or bundle == discovered_path.parent
+    )
+    if not use_user_data_dir:
+        return
+
+    data_root = paths.user_data_dir()
+
+    if not Path(cfg.storage.db_path).is_absolute():
+        cfg.storage.db_path = str(data_root / Path(cfg.storage.db_path))
+
+    if not Path(cfg.storage.crops_dir).is_absolute():
+        cfg.storage.crops_dir = str(data_root / Path(cfg.storage.crops_dir))
+
+
+def save_db_path(new_db_path: str, config_path: Optional[str] = None) -> None:
+    """Persist *new_db_path* into the storage.db_path field of the YAML config.
+
+    Reads the existing config file (or starts with an empty dict if absent),
+    updates only the storage.db_path key, and writes the file back.
+    """
+    if config_path is None:
+        candidates = [
+            Path("config.yaml"),
+            Path(os.environ.get("FACE_LOCAL_CONFIG", "config.yaml")),
+        ]
+        for c in candidates:
+            if c.exists():
+                config_path = str(c)
+                break
+        else:
+            config_path = "config.yaml"
+
+    path = Path(config_path)
+    raw: dict = {}
+    if path.exists():
+        with open(path, "r", encoding="utf-8") as fh:
+            raw = yaml.safe_load(fh) or {}
+
+    raw.setdefault("storage", {})["db_path"] = new_db_path
+
+    with open(path, "w", encoding="utf-8") as fh:
+        yaml.dump(raw, fh, allow_unicode=True, default_flow_style=False, sort_keys=False)

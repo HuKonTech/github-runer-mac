@@ -45,6 +45,7 @@ import cv2
 import numpy as np
 
 from app.embeddings.base import FaceEmbedder
+from app.paths import resource_path
 
 log = logging.getLogger(__name__)
 
@@ -73,23 +74,43 @@ class TFLiteEmbedder(FaceEmbedder):
         self._interpreter = None
         self._input_index: int = 0
         self._output_index: int = 0
+        self._sface = None
 
-        resolved = Path(model_path) if model_path else Path(_DEFAULT_MODEL_PATH)
+        resolved = Path(model_path) if model_path else resource_path(_DEFAULT_MODEL_PATH)
 
         if resolved.exists():
             self._load_tflite(resolved)
         else:
             log.warning(
-                "Embedding model not found at %s — using HOG stub fallback. "
-                "Download a MobileFaceNet TFLite model and set "
-                "embedding.model_path in config.yaml for production quality.",
+                "Embedding model not found at %s — trying SFace fallback.",
                 resolved,
             )
-            self._backend = "hog_stub"
+            self._try_sface_fallback()
 
     # ------------------------------------------------------------------
     # Initialisation helpers
     # ------------------------------------------------------------------
+
+    def _try_sface_fallback(self) -> None:
+        try:
+            from app.embeddings.sface_embedder import SFaceEmbedder
+
+            self._sface = SFaceEmbedder()
+            self._embedding_dim = self._sface.embedding_dim
+            self._backend = "sface"
+            log.info("Using SFace embedder as fallback (backend: sface, dim=128)")
+        except FileNotFoundError:
+            log.warning(
+                "SFace model not found at models/sface.onnx — using HOG stub fallback. "
+                "Run build_and_run.sh or download manually: "
+                "curl -L https://github.com/opencv/opencv_zoo/raw/main/models/"
+                "face_recognition_sface/face_recognition_sface_2021dec.onnx "
+                "-o models/sface.onnx",
+            )
+            self._backend = "hog_stub"
+        except Exception as exc:
+            log.warning("SFace fallback failed (%s) — using HOG stub", exc)
+            self._backend = "hog_stub"
 
     def _load_tflite(self, model_path: Path) -> None:
         """Load the TFLite model via ai-edge-litert, tflite-runtime, or tensorflow."""
@@ -155,16 +176,10 @@ class TFLiteEmbedder(FaceEmbedder):
         return self._embedding_dim
 
     def embed(self, face_bgr: np.ndarray) -> np.ndarray:
-        """Return an L2-normalised embedding for *face_bgr*.
-
-        Args:
-            face_bgr: BGR uint8 numpy array (any size).
-
-        Returns:
-            float32 numpy array of shape ``(embedding_dim,)``.
-        """
         if self._interpreter is not None:
             return self._embed_tflite(face_bgr)
+        if self._sface is not None:
+            return self._sface.embed(face_bgr)
         return self._embed_hog_stub(face_bgr)
 
     # ------------------------------------------------------------------
@@ -173,6 +188,9 @@ class TFLiteEmbedder(FaceEmbedder):
 
     def _preprocess(self, face_bgr: np.ndarray) -> np.ndarray:
         """Resize and normalise face crop for model input."""
+        from app.embeddings.sface_embedder import _is_grayscale, _enhance_grayscale
+        if _is_grayscale(face_bgr):
+            face_bgr = _enhance_grayscale(face_bgr)
         resized = cv2.resize(
             face_bgr, (self._input_w, self._input_h), interpolation=cv2.INTER_LINEAR
         )

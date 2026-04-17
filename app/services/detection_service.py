@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 from app.config import AppConfig
 from app.db.models import Face, Image
 from app.detectors.base import Detection, FaceDetector
+from app.detectors.cpu_detector import CpuDetector
 from app.utils.image_utils import save_face_crop
 
 log = logging.getLogger(__name__)
@@ -97,22 +98,40 @@ class DetectionService:
         image.width = w
         image.height = h
 
-        detections: List[Detection] = self._detector.detect(
-            img_bgr,
-            confidence_threshold=self._config.detection.confidence_threshold,
-            min_face_size=self._config.detection.min_face_size,
-        )
+        try:
+            detections: List[Detection] = self._detector.detect(
+                img_bgr,
+                confidence_threshold=self._config.detection.confidence_threshold,
+                min_face_size=self._config.detection.min_face_size,
+            )
+        except RuntimeError as exc:
+            if "EdgeTPU" in str(exc) or "Falling back to CPU" in str(exc):
+                log.warning(
+                    "Coral TPU inference failed (%s) — switching to CPU detector for remaining images.",
+                    exc,
+                )
+                self._detector = CpuDetector(
+                    model_path=self._config.detection.cpu_model_path
+                )
+                detections = self._detector.detect(
+                    img_bgr,
+                    confidence_threshold=self._config.detection.confidence_threshold,
+                    min_face_size=self._config.detection.min_face_size,
+                )
+            else:
+                raise
 
         # Remove stale face records for this image before adding new ones
         self._session.query(Face).filter(Face.image_id == image.id).delete()
 
-        for det in detections:
+        for face_index, det in enumerate(detections):
             crop_path = save_face_crop(
                 img_bgr=img_bgr,
                 detection=det,
                 crops_dir=self._crops_dir,
                 image_id=image.id,
                 thumbnail_size=self._config.scan.thumbnail_size,
+                face_index=face_index,
             )
 
             face = Face(

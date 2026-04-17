@@ -40,10 +40,11 @@ class FaceThumbnail(QLabel):
         self._load_pixmap(face.crop_path)
         self.setFixedSize(_THUMB_SIZE, _THUMB_SIZE)
         self.setAlignment(Qt.AlignCenter)
+        person_name = face.person.name if face.person else "—"
         self.setToolTip(
-            f"Face #{face.id}\n"
-            f"Confidence: {face.confidence:.2f}\n"
-            f"Backend: {face.detector_backend}\n"
+            f"<b>{person_name}</b><br>"
+            f"Face #{face.id} · confidence {face.confidence:.2f}<br>"
+            f"Backend: {face.detector_backend}<br>"
             f"File: {Path(face.image.file_path).name if face.image else '?'}"
         )
         self.setStyleSheet(

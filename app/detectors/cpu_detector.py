@@ -30,6 +30,7 @@ import cv2
 import numpy as np
 
 from app.detectors.base import Detection, FaceDetector
+from app.paths import resource_path
 
 log = logging.getLogger(__name__)
 
@@ -112,8 +113,8 @@ class CpuDetector(FaceDetector):
                 candidates_proto.append(p)
 
         # Default search locations
-        candidates_proto.append(Path(_DEFAULT_PROTOTXT))
-        candidates_model.append(Path(_DEFAULT_CAFFEMODEL))
+        candidates_proto.append(resource_path(_DEFAULT_PROTOTXT))
+        candidates_model.append(resource_path(_DEFAULT_CAFFEMODEL))
 
         found_proto = next((p for p in candidates_proto if p.exists()), None)
         found_model = next((p for p in candidates_model if p.exists()), None)

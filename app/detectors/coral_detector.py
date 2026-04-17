@@ -20,9 +20,32 @@ from app.detectors.base import Detection, FaceDetector
 
 log = logging.getLogger(__name__)
 
-_EDGETPU_LIB = (
-    "libedgetpu.1.dylib" if platform.system() == "Darwin" else "libedgetpu.so.1"
-)
+def _find_edgetpu_lib() -> str:
+    """Return the first existing libedgetpu path, or the default name."""
+    import ctypes.util
+    if platform.system() == "Darwin":
+        candidates = [
+            "/usr/local/lib/libedgetpu.1.dylib",
+            "/opt/homebrew/lib/libedgetpu.1.dylib",
+            "libedgetpu.1.dylib",
+        ]
+    else:
+        candidates = [
+            "/usr/lib/libedgetpu.so.1",
+            "/usr/local/lib/libedgetpu.so.1",
+            "libedgetpu.so.1",
+        ]
+    for path in candidates:
+        if path.startswith("/"):
+            import os
+            if os.path.exists(path):
+                return path
+        else:
+            return path  # relative — let dlopen handle it
+    return candidates[-1]
+
+
+_EDGETPU_LIB = _find_edgetpu_lib()
 
 
 def _make_interpreter(model_path: str):
@@ -135,7 +158,16 @@ class CoralDetector(FaceDetector):
         rgb = cv2.cvtColor(resized, cv2.COLOR_BGR2RGB)
 
         _set_input(self._interpreter, rgb)
-        self._interpreter.invoke()
+        try:
+            self._interpreter.invoke()
+        except RuntimeError as exc:
+            msg = str(exc)
+            if "EdgeTpuDelegateForCustomOp" in msg or "unresolved custom op" in msg.lower():
+                raise RuntimeError(
+                    "EdgeTPU inference failed — device may be disconnected or not recognized. "
+                    "Falling back to CPU detector."
+                ) from exc
+            raise
 
         raw = _get_detections(self._interpreter, img_w, img_h, confidence_threshold)
 
