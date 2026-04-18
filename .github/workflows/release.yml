@@ -174,7 +174,7 @@ jobs:
   post-to-x:
     name: Post Release to X
     needs: release
-    if: github.event_name == 'workflow_dispatch' && needs.release.result == 'success' && inputs.prerelease != true
+    if: needs.release.result == 'success' && (github.event_name != 'workflow_dispatch' || inputs.prerelease != true)
     runs-on: ubuntu-latest
     env:
       X_API_KEY: ${{ secrets.X_API_KEY }}
