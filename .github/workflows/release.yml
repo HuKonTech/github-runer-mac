@@ -174,7 +174,6 @@ jobs:
   post-to-x:
     name: Post Release to X
     needs: release
-    if: needs.release.result == 'success'
     runs-on: ubuntu-latest
     env:
       X_API_KEY: ${{ secrets.X_API_KEY }}
