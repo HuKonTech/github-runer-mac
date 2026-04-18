@@ -139,11 +139,11 @@ def render_post_text(
     )
     english_long = (
         "A lightweight macOS menu bar app to manage your local GitHub Actions self-hosted runner.\n\n"
-        "Monitor status, control start/stop, and keep it running smoothly - all without opening Terminal."
+        "Monitor status, control start/stop, and keep it running smoothly — all without opening Terminal."
     )
     hungarian_long = (
         "Egy könnyű macOS menüsor alkalmazás a helyi GitHub Actions self-hosted runner kezelésére.\n\n"
-        "Figyelheted az állapotát, indíthatod/leállíthatod - mindezt Terminál nélkül."
+        "Figyelheted az állapotát, indíthatod/leállíthatod — mindezt Terminál nélkül."
     )
     english_short = "Manage your local GitHub Actions self-hosted runner from the macOS menu bar."
     hungarian_short = "A helyi GitHub Actions self-hosted runner kezelése a macOS menüsorból."
@@ -165,7 +165,11 @@ def render_post_text(
     download_line = f"Download / Letöltés: {release_url}"
 
     candidates = [
+        "\n\n".join([english_long, hungarian_long]),
+        "\n\n".join([english_long, hungarian_long, download_line]),
         "\n\n".join([opening, english_long, hungarian_long, platform_line, download_line, hashtags]),
+        "\n\n".join([opening, english_short, hungarian_short]),
+        "\n\n".join([english_short, hungarian_short, download_line]),
         "\n\n".join([opening, english_short, hungarian_short, platform_line, download_line, hashtags]),
         "\n\n".join([opening, english_short, platform_line, download_line, hashtags]),
         "\n\n".join([opening, hungarian_short, platform_line, download_line, hashtags]),

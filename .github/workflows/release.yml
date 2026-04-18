@@ -59,11 +59,39 @@ jobs:
             RELEASE_NAME="${INPUT_RELEASE_NAME:-${APP_NAME} v${PACKAGE_VERSION}}"
             PRERELEASE="${INPUT_PRERELEASE:-false}"
           else
-            SHORT_SHA="$(printf '%s' "$GITHUB_SHA" | cut -c1-7)"
-            PACKAGE_VERSION="dev-${SHORT_SHA}"
+            git fetch --tags --force
+            PACKAGE_VERSION="$(
+              python3 - <<'PY'
+          import re
+          import subprocess
+
+          default_version = (1, 0, 0)
+          latest_version = None
+
+          tags = subprocess.check_output(
+              ["git", "tag", "--list", "v*"],
+              text=True,
+          ).splitlines()
+
+          for tag in tags:
+              match = re.fullmatch(r"v(\d+)\.(\d+)\.(\d+)", tag.strip())
+              if not match:
+                  continue
+
+              version = tuple(int(part) for part in match.groups())
+              if latest_version is None or version > latest_version:
+                  latest_version = version
+
+          if latest_version is None:
+              print("1.0.0")
+          else:
+              major, minor, patch = latest_version
+              print(f"{major}.{minor}.{patch + 1}")
+          PY
+            )"
             TAG="v${PACKAGE_VERSION}"
-            RELEASE_NAME="${APP_NAME} ${PACKAGE_VERSION}"
-            PRERELEASE="true"
+            RELEASE_NAME="${APP_NAME} v${PACKAGE_VERSION}"
+            PRERELEASE="false"
           fi
 
           {
