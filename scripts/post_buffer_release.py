@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import sys
 import urllib.error
 import urllib.request
 import warnings
@@ -13,6 +14,7 @@ from typing import Iterable, List, Mapping, Sequence, Tuple
 BUFFER_API_URL = "https://api.buffer.com"
 DEFAULT_CHANNEL_SERVICE = "twitter"
 DEFAULT_POST_MODE = "shareNow"
+DEFAULT_USER_AGENT = "github-runer-mac-buffer-release/1.0"
 MAX_POST_LENGTH = 280
 
 
@@ -171,6 +173,27 @@ def render_post_text(
     raise ValueError(f"Generated Buffer post exceeds {MAX_POST_LENGTH} characters.")
 
 
+def resolve_user_agent(env: Mapping[str, str] | None = None) -> str:
+    source = env if env is not None else os.environ
+    value = source.get("BUFFER_USER_AGENT")
+    if value is None or value.strip() == "":
+        return DEFAULT_USER_AGENT
+    return value.strip()
+
+
+def format_http_error(error_code: int, details: str) -> str:
+    cleaned = details.strip() or "No response body."
+    if error_code == 403 and "1010" in cleaned:
+        return (
+            "Buffer API request failed (403). The response included `1010`, which likely means the "
+            "request was blocked before normal GraphQL handling. This can happen when the API key is "
+            "expired or lacks access to the target Buffer account/channel, or when edge protection "
+            "rejects the default client signature. Regenerate the API key in "
+            "https://publish.buffer.com/settings/api and, if possible, set BUFFER_CHANNEL_ID explicitly."
+        )
+    return f"Buffer API request failed ({error_code}): {cleaned}"
+
+
 def graphql_request(api_key: str, query: str, variables: Mapping[str, object] | None = None) -> Mapping[str, object]:
     payload = json.dumps({"query": query, "variables": variables or {}}).encode("utf-8")
     request = urllib.request.Request(
@@ -178,7 +201,9 @@ def graphql_request(api_key: str, query: str, variables: Mapping[str, object] | 
         data=payload,
         headers={
             "Content-Type": "application/json",
+            "Accept": "application/json",
             "Authorization": f"Bearer {api_key}",
+            "User-Agent": resolve_user_agent(),
         },
         method="POST",
     )
@@ -188,7 +213,7 @@ def graphql_request(api_key: str, query: str, variables: Mapping[str, object] | 
             raw_body = response.read()
     except urllib.error.HTTPError as error:
         details = error.read().decode("utf-8", errors="replace")
-        raise RuntimeError(f"Buffer API request failed ({error.code}): {details}") from error
+        raise RuntimeError(format_http_error(error.code, details)) from error
 
     parsed = json.loads(raw_body.decode("utf-8"))
     errors = parsed.get("errors") or []
@@ -255,6 +280,16 @@ def resolve_channel(
     channel_name: str | None,
     channel_service: str,
 ) -> Mapping[str, object]:
+    if channel_id:
+        normalized_name = (channel_name or "").strip() or channel_id
+        normalized_service = (channel_service or DEFAULT_CHANNEL_SERVICE).strip() or DEFAULT_CHANNEL_SERVICE
+        return {
+            "id": channel_id,
+            "name": normalized_name,
+            "displayName": normalized_name,
+            "service": normalized_service,
+        }
+
     organization_ids = discover_organization_ids(api_key, organization_id)
     collected_matches: List[Mapping[str, object]] = []
 
@@ -394,4 +429,8 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    try:
+        raise SystemExit(main())
+    except Exception as error:
+        print(f"Buffer release post failed: {error}", file=sys.stderr)
+        raise SystemExit(1)

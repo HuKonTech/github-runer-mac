@@ -46,3 +46,27 @@ def test_select_channel_uses_first_deterministic_match():
 
 def test_empty_buffer_post_mode_falls_back_to_share_now():
     assert MODULE.resolve_post_mode({"BUFFER_POST_MODE": ""}) == "shareNow"
+
+
+def test_resolve_channel_short_circuits_for_explicit_channel_id():
+    selected = MODULE.resolve_channel(
+        "token",
+        organization_id=None,
+        channel_id="channel-123",
+        channel_name="X account",
+        channel_service="twitter",
+    )
+
+    assert selected == {
+        "id": "channel-123",
+        "name": "X account",
+        "displayName": "X account",
+        "service": "twitter",
+    }
+
+
+def test_format_http_error_for_1010_is_actionable():
+    message = MODULE.format_http_error(403, "error code: 1010")
+
+    assert "blocked before normal GraphQL handling" in message
+    assert "BUFFER_CHANNEL_ID" in message
