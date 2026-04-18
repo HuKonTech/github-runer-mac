@@ -14,12 +14,35 @@ private enum AppTextKey: String {
     case toggleLaunchAtLogin
     case buttonOpenLoginItemsSettings
     case buttonOpenRunnerDirectory
+    case buttonOpenUpdateWindow
     case buttonOpenAboutWindow
     case aboutWindowTitle
     case aboutDescription
     case buttonOpenAuthorGitHub
     case buttonOpenAuthorX
     case buttonOpenRepository
+    case updateWindowTitle
+    case updateDescription
+    case updateInstalledVersionTitle
+    case updateLatestVersionTitle
+    case updateStatusTitle
+    case updateUnknownVersion
+    case buttonCheckForUpdates
+    case buttonInstallUpdate
+    case buttonOpenReleasePage
+    case updateIdle
+    case updateChecking
+    case updateUpToDate
+    case updateAvailableFallback
+    case updateDownloading
+    case updateInstalling
+    case updateErrorInvalidResponse
+    case updateErrorNoPublishedRelease
+    case updateErrorMissingAsset
+    case updateErrorDownload
+    case updateErrorNoRelease
+    case updateErrorMissingBundle
+    case updateErrorInvalidBundle
     case buttonQuit
     case runnerRunning
     case runnerStopped
@@ -143,12 +166,35 @@ enum AppStrings {
         .toggleLaunchAtLogin: "Launch automatically at login",
         .buttonOpenLoginItemsSettings: "Open Login Items settings",
         .buttonOpenRunnerDirectory: "Open runner folder",
+        .buttonOpenUpdateWindow: "Check for updates",
         .buttonOpenAboutWindow: "About and links",
         .aboutWindowTitle: "About GitHub Runner",
         .aboutDescription: "Created by Benedek Koncsik. Open the profile pages or the project repository directly from the menu.",
         .buttonOpenAuthorGitHub: "GitHub profile",
         .buttonOpenAuthorX: "X profile",
         .buttonOpenRepository: "Project repository",
+        .updateWindowTitle: "Software update",
+        .updateDescription: "Check the latest GitHub release and install it automatically when a newer version is available.",
+        .updateInstalledVersionTitle: "Installed version",
+        .updateLatestVersionTitle: "Latest version",
+        .updateStatusTitle: "Status",
+        .updateUnknownVersion: "Not checked yet",
+        .buttonCheckForUpdates: "Check now",
+        .buttonInstallUpdate: "Download and install",
+        .buttonOpenReleasePage: "Open release page",
+        .updateIdle: "Ready to check for updates.",
+        .updateChecking: "Checking GitHub releases...",
+        .updateUpToDate: "You already have the latest version.",
+        .updateAvailableFallback: "A newer version is available.",
+        .updateDownloading: "Downloading the new version...",
+        .updateInstalling: "Installing update and restarting...",
+        .updateErrorInvalidResponse: "The update server returned an unexpected response.",
+        .updateErrorNoPublishedRelease: "No published GitHub release is available yet for this repository.",
+        .updateErrorMissingAsset: "The latest release does not contain a macOS app download.",
+        .updateErrorDownload: "The update package could not be downloaded.",
+        .updateErrorNoRelease: "There is no downloadable release selected.",
+        .updateErrorMissingBundle: "The downloaded archive does not contain an app bundle.",
+        .updateErrorInvalidBundle: "This app is not running from a macOS app bundle.",
         .buttonQuit: "Quit",
         .runnerRunning: "Running",
         .runnerStopped: "Stopped",
@@ -206,12 +252,35 @@ enum AppStrings {
             .toggleLaunchAtLogin: "Induljon automatikusan bejelentkezéskor",
             .buttonOpenLoginItemsSettings: "Login Items beállítások megnyitása",
             .buttonOpenRunnerDirectory: "Runner mappa megnyitása",
+            .buttonOpenUpdateWindow: "Frissítések keresése",
             .buttonOpenAboutWindow: "Névjegy és linkek",
             .aboutWindowTitle: "GitHub Runner névjegy",
             .aboutDescription: "Készítette Benedek Koncsik. Innen közvetlenül megnyithatod a profiloldalakat és a projekt repositoryját.",
             .buttonOpenAuthorGitHub: "GitHub profil",
             .buttonOpenAuthorX: "X profil",
             .buttonOpenRepository: "Projekt repository",
+            .updateWindowTitle: "Szoftverfrissítés",
+            .updateDescription: "Ellenőrzi a legfrissebb GitHub release-t, és ha van újabb verzió, automatikusan letölti és telepíti.",
+            .updateInstalledVersionTitle: "Telepített verzió",
+            .updateLatestVersionTitle: "Legfrissebb verzió",
+            .updateStatusTitle: "Állapot",
+            .updateUnknownVersion: "Még nincs ellenőrizve",
+            .buttonCheckForUpdates: "Ellenőrzés",
+            .buttonInstallUpdate: "Letöltés és telepítés",
+            .buttonOpenReleasePage: "Release oldal megnyitása",
+            .updateIdle: "Készen áll a frissítések ellenőrzésére.",
+            .updateChecking: "GitHub release-ek ellenőrzése...",
+            .updateUpToDate: "Már a legfrissebb verzió van telepítve.",
+            .updateAvailableFallback: "Elérhető egy újabb verzió.",
+            .updateDownloading: "Az új verzió letöltése folyamatban...",
+            .updateInstalling: "Frissítés telepítése és újraindítás...",
+            .updateErrorInvalidResponse: "A frissítési kiszolgáló váratlan választ adott.",
+            .updateErrorNoPublishedRelease: "Ehhez a repositoryhoz még nincs közzétett GitHub release.",
+            .updateErrorMissingAsset: "A legfrissebb release nem tartalmaz letölthető macOS alkalmazást.",
+            .updateErrorDownload: "Nem sikerült letölteni a frissítő csomagot.",
+            .updateErrorNoRelease: "Nincs kiválasztott letölthető release.",
+            .updateErrorMissingBundle: "A letöltött csomag nem tartalmaz alkalmazás bundle-t.",
+            .updateErrorInvalidBundle: "Az alkalmazás nem macOS app bundle-ből fut.",
             .buttonQuit: "Kilépés",
             .runnerRunning: "Fut",
             .runnerStopped: "Leállítva",
@@ -997,12 +1066,35 @@ enum AppStrings {
     static var toggleLaunchAtLogin: String { value(.toggleLaunchAtLogin) }
     static var buttonOpenLoginItemsSettings: String { value(.buttonOpenLoginItemsSettings) }
     static var buttonOpenRunnerDirectory: String { value(.buttonOpenRunnerDirectory) }
+    static var buttonOpenUpdateWindow: String { value(.buttonOpenUpdateWindow) }
     static var buttonOpenAboutWindow: String { value(.buttonOpenAboutWindow) }
     static var aboutWindowTitle: String { value(.aboutWindowTitle) }
     static var aboutDescription: String { value(.aboutDescription) }
     static var buttonOpenAuthorGitHub: String { value(.buttonOpenAuthorGitHub) }
     static var buttonOpenAuthorX: String { value(.buttonOpenAuthorX) }
     static var buttonOpenRepository: String { value(.buttonOpenRepository) }
+    static var updateWindowTitle: String { value(.updateWindowTitle) }
+    static var updateDescription: String { value(.updateDescription) }
+    static var updateInstalledVersionTitle: String { value(.updateInstalledVersionTitle) }
+    static var updateLatestVersionTitle: String { value(.updateLatestVersionTitle) }
+    static var updateStatusTitle: String { value(.updateStatusTitle) }
+    static var updateUnknownVersion: String { value(.updateUnknownVersion) }
+    static var buttonCheckForUpdates: String { value(.buttonCheckForUpdates) }
+    static var buttonInstallUpdate: String { value(.buttonInstallUpdate) }
+    static var buttonOpenReleasePage: String { value(.buttonOpenReleasePage) }
+    static var updateIdle: String { value(.updateIdle) }
+    static var updateChecking: String { value(.updateChecking) }
+    static var updateUpToDate: String { value(.updateUpToDate) }
+    static var updateAvailableFallback: String { value(.updateAvailableFallback) }
+    static var updateDownloading: String { value(.updateDownloading) }
+    static var updateInstalling: String { value(.updateInstalling) }
+    static var updateErrorInvalidResponse: String { value(.updateErrorInvalidResponse) }
+    static var updateErrorNoPublishedRelease: String { value(.updateErrorNoPublishedRelease) }
+    static var updateErrorMissingAsset: String { value(.updateErrorMissingAsset) }
+    static var updateErrorDownload: String { value(.updateErrorDownload) }
+    static var updateErrorNoRelease: String { value(.updateErrorNoRelease) }
+    static var updateErrorMissingBundle: String { value(.updateErrorMissingBundle) }
+    static var updateErrorInvalidBundle: String { value(.updateErrorInvalidBundle) }
     static var buttonQuit: String { value(.buttonQuit) }
     static var runnerRunning: String { value(.runnerRunning) }
     static var runnerStopped: String { value(.runnerStopped) }
@@ -1055,5 +1147,21 @@ enum AppStrings {
 
     static func errorRunnerHandling(reason: String) -> String {
         format(.errorRunnerHandling, reason)
+    }
+
+    static func updateAvailableVersion(_ version: String) -> String {
+        "New version available: \(version)"
+    }
+
+    static func updateErrorDetails(_ reason: String) -> String {
+        "Update failed: \(reason)"
+    }
+
+    static func updateErrorUnzip(_ reason: String) -> String {
+        "Could not unpack the update: \(reason)"
+    }
+
+    static func updateErrorInstall(_ reason: String) -> String {
+        "Could not install the update: \(reason)"
     }
 }

@@ -1,6 +1,9 @@
 name: Build and Release
 
 on:
+  push:
+    branches:
+      - main
   workflow_dispatch:
     inputs:
       version:
@@ -20,6 +23,9 @@ on:
 permissions:
   contents: write
   actions: read
+
+env:
+  BUILD_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.version || format('dev-{0}', github.sha) }}
 
 jobs:
   select-runner:
@@ -66,17 +72,17 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Build app bundle
-        run: ./script/build_and_run.sh --bundle
+        run: APP_VERSION=${{ env.BUILD_VERSION }} ./script/build_and_run.sh --bundle
 
       - name: Archive app bundle
         run: |
-          ditto -c -k --sequesterRsrc --keepParent dist/GitHubRunnerMenu.app GitHubRunnerMenu-${{ inputs.version }}-macOS-arm64.zip
+          ditto -c -k --sequesterRsrc --keepParent dist/GitHubRunnerMenu.app GitHubRunnerMenu-${{ env.BUILD_VERSION }}-macOS-arm64.zip
 
       - name: Upload release artifact
         uses: actions/upload-artifact@v4
         with:
           name: release-asset
-          path: GitHubRunnerMenu-${{ inputs.version }}-macOS-arm64.zip
+          path: GitHubRunnerMenu-${{ env.BUILD_VERSION }}-macOS-arm64.zip
           if-no-files-found: error
 
   build-github-hosted:
@@ -89,17 +95,17 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Build app bundle
-        run: ./script/build_and_run.sh --bundle
+        run: APP_VERSION=${{ env.BUILD_VERSION }} ./script/build_and_run.sh --bundle
 
       - name: Archive app bundle
         run: |
-          ditto -c -k --sequesterRsrc --keepParent dist/GitHubRunnerMenu.app GitHubRunnerMenu-${{ inputs.version }}-macOS-arm64.zip
+          ditto -c -k --sequesterRsrc --keepParent dist/GitHubRunnerMenu.app GitHubRunnerMenu-${{ env.BUILD_VERSION }}-macOS-arm64.zip
 
       - name: Upload release artifact
         uses: actions/upload-artifact@v4
         with:
           name: release-asset
-          path: GitHubRunnerMenu-${{ inputs.version }}-macOS-arm64.zip
+          path: GitHubRunnerMenu-${{ env.BUILD_VERSION }}-macOS-arm64.zip
           if-no-files-found: error
 
   release:
@@ -107,7 +113,7 @@ jobs:
     needs:
       - build-self-hosted
       - build-github-hosted
-    if: always() && (needs['build-self-hosted'].result == 'success' || needs['build-github-hosted'].result == 'success')
+    if: github.event_name == 'workflow_dispatch' && always() && (needs['build-self-hosted'].result == 'success' || needs['build-github-hosted'].result == 'success')
     runs-on: ubuntu-latest
     steps:
       - name: Download release artifact
@@ -123,4 +129,4 @@ jobs:
           name: ${{ inputs.release_name != '' && inputs.release_name || format('GitHubRunnerMenu v{0}', inputs.version) }}
           prerelease: ${{ inputs.prerelease }}
           generate_release_notes: true
-          files: release-assets/GitHubRunnerMenu-${{ inputs.version }}-macOS-arm64.zip
+          files: release-assets/GitHubRunnerMenu-${{ env.BUILD_VERSION }}-macOS-arm64.zip

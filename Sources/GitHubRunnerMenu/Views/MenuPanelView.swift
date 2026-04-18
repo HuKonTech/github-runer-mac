@@ -101,6 +101,10 @@ struct MenuPanelView: View {
 
             Divider()
 
+            Button(AppStrings.buttonOpenUpdateWindow) {
+                UpdateWindowController.shared.show()
+            }
+
             Button(AppStrings.buttonOpenAboutWindow) {
                 AboutWindowController.shared.show()
             }
