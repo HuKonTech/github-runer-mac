@@ -100,6 +100,19 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Select Xcode 16
+        run: |
+          XCODE_APP="$(find /Applications -maxdepth 1 -type d -name 'Xcode_16*.app' | sort -V | tail -n 1)"
+          if [ -z "$XCODE_APP" ]; then
+            echo "Xcode 16 is not available on this runner image." >&2
+            ls -1 /Applications | grep '^Xcode' || true
+            exit 1
+          fi
+
+          sudo xcode-select -s "$XCODE_APP/Contents/Developer"
+          xcodebuild -version
+          swift --version
+
       - name: Build app bundle
         run: APP_VERSION=${{ env.BUILD_VERSION }} ./script/build_and_run.sh --bundle
 
