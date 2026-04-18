@@ -41,23 +41,29 @@ jobs:
           script: |
             const preferredRunnerName = "Koncsik-MacBook-Air";
             const { owner, repo } = context.repo;
+            try {
+              const response = await github.request(
+                "GET /repos/{owner}/{repo}/actions/runners",
+                { owner, repo }
+              );
 
-            const response = await github.request(
-              "GET /repos/{owner}/{repo}/actions/runners",
-              { owner, repo }
-            );
+              const runner = response.data.runners.find(
+                (item) => item.name === preferredRunnerName
+              );
 
-            const runner = response.data.runners.find(
-              (item) => item.name === preferredRunnerName
-            );
-
-            const isAvailable = Boolean(runner?.status === "online" && !runner?.busy);
-            core.info(
-              runner
-                ? `Runner ${preferredRunnerName} status=${runner.status} busy=${runner.busy}`
-                : `Runner ${preferredRunnerName} was not found for this repository`
-            );
-            core.setOutput("use_self_hosted", isAvailable ? "true" : "false");
+              const isAvailable = Boolean(runner?.status === "online" && !runner?.busy);
+              core.info(
+                runner
+                  ? `Runner ${preferredRunnerName} status=${runner.status} busy=${runner.busy}`
+                  : `Runner ${preferredRunnerName} was not found for this repository`
+              );
+              core.setOutput("use_self_hosted", isAvailable ? "true" : "false");
+            } catch (error) {
+              core.warning(
+                `Could not inspect self-hosted runners (${error.status || "unknown"}). Falling back to GitHub-hosted macOS runner.`
+              );
+              core.setOutput("use_self_hosted", "false");
+            }
 
   build-self-hosted:
     name: Build on Preferred Self-Hosted Runner
