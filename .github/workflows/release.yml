@@ -25,99 +25,145 @@ permissions:
   actions: read
 
 env:
-  BUILD_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.version || format('dev-{0}', github.sha) }}
+  APP_NAME: GitHubRunnerMenu
 
 jobs:
-  select-runner:
-    name: Select Runner
+  prepare:
+    name: Prepare Release Metadata
     runs-on: ubuntu-latest
     outputs:
-      use_self_hosted: ${{ steps.pick.outputs.use_self_hosted }}
-      selected_runner_name: ${{ steps.pick.outputs.selected_runner_name }}
+      package_version: ${{ steps.meta.outputs.package_version }}
+      tag: ${{ steps.meta.outputs.tag }}
+      release_name: ${{ steps.meta.outputs.release_name }}
+      prerelease: ${{ steps.meta.outputs.prerelease }}
+      macos_runs_on: ${{ steps.macos_runner.outputs.macos_runs_on }}
+      macos_runner_note: ${{ steps.macos_runner.outputs.macos_runner_note }}
     steps:
-      - name: Check self-hosted runner availability
-        id: pick
-        uses: actions/github-script@v7
-        with:
-          github-token: ${{ secrets.RUNNER_ADMIN_TOKEN }}
-          script: |
-            const { owner, repo } = context.repo;
-            try {
-              const response = await github.request(
-                "GET /repos/{owner}/{repo}/actions/runners",
-                { owner, repo }
-              );
+      - uses: actions/checkout@v6
 
-              const runner = response.data.runners.find((item) => {
-                const labels = new Set((item.labels || []).map((label) => label.name));
-                return (
-                  item.status === "online" &&
-                  !item.busy &&
-                  labels.has("self-hosted") &&
-                  labels.has("macOS") &&
-                  labels.has("ARM64")
-                );
-              });
-
-              core.info(
-                `Repository-visible runners: ${response.data.runners
-                  .map((item) => `${item.name}[${item.status}, busy=${item.busy}]`)
-                  .join(", ")}`
-              );
-
-              if (runner) {
-                core.info(`Selected self-hosted runner ${runner.name}.`);
-                core.setOutput("use_self_hosted", "true");
-                core.setOutput("selected_runner_name", runner.name);
-              } else {
-                core.info("No online idle self-hosted macOS ARM64 runner is currently available for this repository.");
-                core.setOutput("use_self_hosted", "false");
-                core.setOutput("selected_runner_name", "");
-              }
-            } catch (error) {
-              core.warning(
-                `Could not inspect self-hosted runners (${error.status || "unknown"}). Falling back to GitHub-hosted macOS runner.`
-              );
-              core.setOutput("use_self_hosted", "false");
-              core.setOutput("selected_runner_name", "");
-            }
-
-  build-self-hosted:
-    name: Build on Preferred Self-Hosted Runner
-    needs: select-runner
-    if: needs.select-runner.outputs.use_self_hosted == 'true'
-    runs-on:
-      - self-hosted
-      - macOS
-      - ARM64
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Build app bundle
-        run: APP_VERSION=${{ env.BUILD_VERSION }} ./script/build_and_run.sh --bundle
-
-      - name: Archive app bundle
+      - id: meta
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+          INPUT_RELEASE_NAME: ${{ inputs.release_name }}
+          INPUT_PRERELEASE: ${{ inputs.prerelease }}
+        shell: bash
         run: |
-          ditto -c -k --sequesterRsrc --keepParent dist/GitHubRunnerMenu.app GitHubRunnerMenu-${{ env.BUILD_VERSION }}-macOS-arm64.zip
+          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
+            PACKAGE_VERSION="${INPUT_VERSION#v}"
+            if ! [[ "$PACKAGE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "workflow_dispatch version must be semver x.y.z, got: $PACKAGE_VERSION" >&2
+              exit 1
+            fi
 
-      - name: Upload release artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: release-asset
-          path: GitHubRunnerMenu-${{ env.BUILD_VERSION }}-macOS-arm64.zip
-          if-no-files-found: error
+            TAG="v${PACKAGE_VERSION}"
+            RELEASE_NAME="${INPUT_RELEASE_NAME:-${APP_NAME} v${PACKAGE_VERSION}}"
+            PRERELEASE="${INPUT_PRERELEASE:-false}"
+          else
+            SHORT_SHA="$(printf '%s' "$GITHUB_SHA" | cut -c1-7)"
+            PACKAGE_VERSION="dev-${SHORT_SHA}"
+            TAG="v${PACKAGE_VERSION}"
+            RELEASE_NAME="${APP_NAME} ${PACKAGE_VERSION}"
+            PRERELEASE="true"
+          fi
 
-  build-github-hosted:
-    name: Build on GitHub Hosted macOS
-    needs: select-runner
-    if: needs.select-runner.outputs.use_self_hosted != 'true'
-    runs-on: macos-14
+          {
+            echo "package_version=$PACKAGE_VERSION"
+            echo "tag=$TAG"
+            echo "release_name=$RELEASE_NAME"
+            echo "prerelease=$PRERELEASE"
+          } >> "$GITHUB_OUTPUT"
+
+      - id: macos_runner
+        env:
+          RUNNER_DISCOVERY_TOKEN: ${{ secrets.RUNNER_DISCOVERY_TOKEN }}
+          DEFAULT_GITHUB_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          RUNNER_JSON='"macos-14"'
+          RUNNER_NOTE="Using GitHub-hosted macOS runner (fallback)."
+          TOKEN_TO_USE="${RUNNER_DISCOVERY_TOKEN:-$DEFAULT_GITHUB_TOKEN}"
+          export GH_TOKEN="$TOKEN_TO_USE"
+          OWNER="${GITHUB_REPOSITORY%/*}"
+          REPO="${GITHUB_REPOSITORY#*/}"
+          RESPONSE_FILE="$(mktemp)"
+          ERROR_FILE="$(mktemp)"
+          FOUND_MATCH=""
+
+          query_and_match() {
+            local endpoint="$1"
+
+            if gh api \
+              -H "Accept: application/vnd.github+json" \
+              "$endpoint" >"$RESPONSE_FILE" 2>"$ERROR_FILE"; then
+              MATCH="$(RUNNERS_JSON="$(cat "$RESPONSE_FILE")" python3 - <<'PY'
+          import json
+          import os
+
+          data = json.loads(os.environ["RUNNERS_JSON"])
+          target_labels = {"self-hosted", "macOS", "ARM64"}
+
+          for runner in data.get("runners", []):
+              labels = {label["name"] for label in runner.get("labels", [])}
+              if (
+                  runner.get("status") == "online"
+                  and not runner.get("busy", False)
+                  and target_labels.issubset(labels)
+              ):
+                  print(json.dumps(["self-hosted", "macOS", "ARM64"]))
+                  raise SystemExit(0)
+
+          raise SystemExit(1)
+          PY
+              )" || true
+
+              if [ -n "$MATCH" ]; then
+                FOUND_MATCH="$MATCH"
+                return 0
+              fi
+
+              return 1
+            fi
+
+            return 2
+          }
+
+          query_and_match "/repos/${OWNER}/${REPO}/actions/runners" || true
+
+          if [ -z "$FOUND_MATCH" ]; then
+            query_and_match "/orgs/${OWNER}/actions/runners" || true
+          fi
+
+          if [ -n "$FOUND_MATCH" ]; then
+            RUNNER_JSON="$FOUND_MATCH"
+            RUNNER_NOTE="Using self-hosted macOS ARM64 runner."
+          fi
+
+          echo "macos_runs_on=$RUNNER_JSON" >> "$GITHUB_OUTPUT"
+          echo "macos_runner_note=$RUNNER_NOTE" >> "$GITHUB_OUTPUT"
+          echo "$RUNNER_NOTE"
+
+          if [ -z "$FOUND_MATCH" ]; then
+            echo "No eligible self-hosted macOS ARM64 runner was discoverable. Falling back to macos-14." >&2
+            if [ -s "$ERROR_FILE" ]; then
+              cat "$ERROR_FILE" >&2
+            fi
+            echo "Tip: set repository secret RUNNER_DISCOVERY_TOKEN with repo admin read access, or admin:org if the runner is org-level." >&2
+          fi
+
+  build-macos:
+    name: Build macOS App
+    needs: prepare
+    runs-on: ${{ fromJSON(needs.prepare.outputs.macos_runs_on) }}
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - name: Select Xcode 16
+      - name: Selected macOS runner
+        shell: bash
+        run: echo "${{ needs.prepare.outputs.macos_runner_note }}"
+
+      - name: Select Xcode 16 on GitHub-hosted macOS
+        if: ${{ !contains(needs.prepare.outputs.macos_runs_on, 'self-hosted') }}
+        shell: bash
         run: |
           XCODE_APP="$(find /Applications -maxdepth 1 -type d -name 'Xcode_16*.app' | sort -V | tail -n 1)"
           if [ -z "$XCODE_APP" ]; then
@@ -127,32 +173,44 @@ jobs:
           fi
 
           sudo xcode-select -s "$XCODE_APP/Contents/Developer"
+
+      - name: Show toolchain versions
+        shell: bash
+        run: |
           xcodebuild -version
           swift --version
 
       - name: Build app bundle
-        run: APP_VERSION=${{ env.BUILD_VERSION }} ./script/build_and_run.sh --bundle
+        shell: bash
+        run: APP_VERSION="${{ needs.prepare.outputs.package_version }}" ./script/build_and_run.sh --bundle
 
-      - name: Archive app bundle
+      - name: Create release directory
+        shell: bash
+        run: mkdir -p release
+
+      - name: Package macOS app
+        shell: bash
         run: |
-          ditto -c -k --sequesterRsrc --keepParent dist/GitHubRunnerMenu.app GitHubRunnerMenu-${{ env.BUILD_VERSION }}-macOS-arm64.zip
+          ditto -c -k --sequesterRsrc --keepParent \
+            "dist/GitHubRunnerMenu.app" \
+            "release/GitHubRunnerMenu-macOS-arm64-${{ needs.prepare.outputs.package_version }}.zip"
 
-      - name: Upload release artifact
+      - name: Upload macOS artifact
         uses: actions/upload-artifact@v4
         with:
           name: release-asset
-          path: GitHubRunnerMenu-${{ env.BUILD_VERSION }}-macOS-arm64.zip
+          path: release/GitHubRunnerMenu-macOS-arm64-${{ needs.prepare.outputs.package_version }}.zip
           if-no-files-found: error
 
   release:
     name: Create GitHub Release
     needs:
-      - build-self-hosted
-      - build-github-hosted
-    if: always() && (needs['build-self-hosted'].result == 'success' || needs['build-github-hosted'].result == 'success')
+      - prepare
+      - build-macos
+    if: ${{ always() && needs.build-macos.result == 'success' }}
     runs-on: ubuntu-latest
     outputs:
-      release_url: ${{ steps.create_release.outputs.url }}
+      release_url: ${{ steps.release_url.outputs.url }}
     steps:
       - name: Download release artifact
         uses: actions/download-artifact@v4
@@ -160,43 +218,47 @@ jobs:
           name: release-asset
           path: release-assets
 
+      - name: Compute release URL
+        id: release_url
+        shell: bash
+        run: |
+          echo "url=${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/releases/tag/${{ needs.prepare.outputs.tag }}" >> "$GITHUB_OUTPUT"
+
       - name: Create release
-        id: create_release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ env.BUILD_VERSION }}
+          tag_name: ${{ needs.prepare.outputs.tag }}
           target_commitish: ${{ github.sha }}
-          name: ${{ github.event_name == 'workflow_dispatch' && (inputs.release_name != '' && inputs.release_name || format('GitHubRunnerMenu v{0}', inputs.version)) || format('GitHubRunnerMenu {0}', env.BUILD_VERSION) }}
-          prerelease: ${{ github.event_name != 'workflow_dispatch' || inputs.prerelease }}
+          name: ${{ needs.prepare.outputs.release_name }}
+          prerelease: ${{ needs.prepare.outputs.prerelease == 'true' }}
           generate_release_notes: true
-          files: release-assets/GitHubRunnerMenu-${{ env.BUILD_VERSION }}-macOS-arm64.zip
+          files: release-assets/GitHubRunnerMenu-macOS-arm64-${{ needs.prepare.outputs.package_version }}.zip
 
   post-to-buffer:
-    name: post-to-buffer
+    name: Post Release Announcement
     needs:
+      - prepare
+      - build-macos
       - release
     if: ${{ needs.release.result == 'success' && github.event_name == 'push' && github.run_attempt == 1 }}
     runs-on: ubuntu-latest
-    env:
-      BUFFER_API_KEY: ${{ secrets.BUFFER_API_KEY }}
-      BUFFER_CHANNEL_ID: ${{ secrets.BUFFER_CHANNEL_ID }}
-      BUFFER_ORGANIZATION_ID: ${{ secrets.BUFFER_ORGANIZATION_ID }}
-      BUFFER_CHANNEL_NAME: ${{ secrets.BUFFER_CHANNEL_NAME }}
-      BUFFER_CHANNEL_SERVICE: ${{ secrets.BUFFER_CHANNEL_SERVICE }}
-      BUFFER_POST_MODE: ${{ secrets.BUFFER_POST_MODE }}
-      BUFFER_POST_TEMPLATE: ${{ secrets.BUFFER_POST_TEMPLATE }}
-      RELEASE_URL: ${{ needs.release.outputs.release_url }}
-      RELEASE_VERSION: ${{ format('dev-{0}', github.sha) }}
-      RELEASE_NAME: ${{ format('GitHubRunnerMenu dev-{0}', github.sha) }}
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v6
+      - uses: actions/checkout@v6
 
       - name: Post release announcement via Buffer
         continue-on-error: true
+        env:
+          BUFFER_API_KEY: ${{ secrets.BUFFER_API_KEY }}
+          BUFFER_CHANNEL_ID: ${{ secrets.BUFFER_CHANNEL_ID }}
+          BUFFER_ORGANIZATION_ID: ${{ secrets.BUFFER_ORGANIZATION_ID }}
+          BUFFER_CHANNEL_NAME: ${{ secrets.BUFFER_CHANNEL_NAME }}
+          BUFFER_CHANNEL_SERVICE: ${{ secrets.BUFFER_CHANNEL_SERVICE }}
+          BUFFER_POST_MODE: ${{ secrets.BUFFER_POST_MODE }}
+          BUFFER_POST_TEMPLATE: ${{ secrets.BUFFER_POST_TEMPLATE }}
+        shell: bash
         run: |
           python3 scripts/post_buffer_release.py \
-            --app-name "GitHubRunnerMenu" \
-            --tag "v${{ env.BUILD_VERSION }}" \
+            --app-name "${APP_NAME}" \
+            --tag "${{ needs.prepare.outputs.tag }}" \
             --release-url "${{ needs.release.outputs.release_url }}" \
-            --platform "macOS=success"
+            --platform "macOS=${{ needs.build-macos.result }}"
