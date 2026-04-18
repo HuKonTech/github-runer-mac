@@ -161,6 +161,7 @@ def render_post_text(
         return text
 
     opening = f"{app_name} {tag} is out. / Megjelent a {app_name} {tag}."
+    compact_opening = f"{app_name} {tag}"
     platform_line = f"Platforms / Platformok: {platforms_text}."
     download_line = f"Download / Letöltés: {release_url}"
 
@@ -168,6 +169,8 @@ def render_post_text(
         "\n\n".join([english_long, hungarian_long]),
         "\n\n".join([english_long, hungarian_long, download_line]),
         "\n\n".join([opening, english_long, hungarian_long, platform_line, download_line, hashtags]),
+        "\n\n".join([compact_opening, english_short, hungarian_short, download_line]),
+        "\n\n".join([compact_opening, english_short, hungarian_short, release_url]),
         "\n\n".join([opening, english_short, hungarian_short]),
         "\n\n".join([english_short, hungarian_short, download_line]),
         "\n\n".join([opening, english_short, hungarian_short, platform_line, download_line, hashtags]),
