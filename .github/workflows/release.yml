@@ -1,0 +1,126 @@
+name: Build and Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version without the v prefix (example: 1.0.0)"
+        required: true
+        type: string
+      release_name:
+        description: "Optional custom release title"
+        required: false
+        type: string
+      prerelease:
+        description: "Create this as a prerelease"
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  select-runner:
+    name: Select Runner
+    runs-on: ubuntu-latest
+    outputs:
+      use_self_hosted: ${{ steps.pick.outputs.use_self_hosted }}
+    steps:
+      - name: Check preferred self-hosted runner availability
+        id: pick
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const preferredRunnerName = "Koncsik-MacBook-Air";
+            const { owner, repo } = context.repo;
+
+            const response = await github.request(
+              "GET /repos/{owner}/{repo}/actions/runners",
+              { owner, repo }
+            );
+
+            const runner = response.data.runners.find(
+              (item) => item.name === preferredRunnerName
+            );
+
+            const isAvailable = Boolean(runner?.status === "online" && !runner?.busy);
+            core.info(
+              runner
+                ? `Runner ${preferredRunnerName} status=${runner.status} busy=${runner.busy}`
+                : `Runner ${preferredRunnerName} was not found for this repository`
+            );
+            core.setOutput("use_self_hosted", isAvailable ? "true" : "false");
+
+  build-self-hosted:
+    name: Build on Preferred Self-Hosted Runner
+    needs: select-runner
+    if: needs.select-runner.outputs.use_self_hosted == 'true'
+    runs-on:
+      - self-hosted
+      - macOS
+      - ARM64
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build app bundle
+        run: ./script/build_and_run.sh --bundle
+
+      - name: Archive app bundle
+        run: |
+          ditto -c -k --sequesterRsrc --keepParent dist/GitHubRunnerMenu.app GitHubRunnerMenu-${{ inputs.version }}-macOS-arm64.zip
+
+      - name: Upload release artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-asset
+          path: GitHubRunnerMenu-${{ inputs.version }}-macOS-arm64.zip
+          if-no-files-found: error
+
+  build-github-hosted:
+    name: Build on GitHub Hosted macOS
+    needs: select-runner
+    if: needs.select-runner.outputs.use_self_hosted != 'true'
+    runs-on: macos-14
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build app bundle
+        run: ./script/build_and_run.sh --bundle
+
+      - name: Archive app bundle
+        run: |
+          ditto -c -k --sequesterRsrc --keepParent dist/GitHubRunnerMenu.app GitHubRunnerMenu-${{ inputs.version }}-macOS-arm64.zip
+
+      - name: Upload release artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-asset
+          path: GitHubRunnerMenu-${{ inputs.version }}-macOS-arm64.zip
+          if-no-files-found: error
+
+  release:
+    name: Create GitHub Release
+    needs:
+      - build-self-hosted
+      - build-github-hosted
+    if: always() && (needs['build-self-hosted'].result == 'success' || needs['build-github-hosted'].result == 'success')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download release artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: release-asset
+          path: release-assets
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ inputs.version }}
+          name: ${{ inputs.release_name != '' && inputs.release_name || format('GitHubRunnerMenu v{0}', inputs.version) }}
+          prerelease: ${{ inputs.prerelease }}
+          generate_release_notes: true
+          files: release-assets/GitHubRunnerMenu-${{ inputs.version }}-macOS-arm64.zip
