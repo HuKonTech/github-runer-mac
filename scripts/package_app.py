@@ -11,12 +11,12 @@ from pathlib import Path
 from PyInstaller.__main__ import run as pyinstaller_run
 from PyInstaller.utils.hooks import collect_submodules
 
-
 APP_NAME = "Face-Local"
 ROOT = Path(__file__).resolve().parent.parent
 BUILD_DIR = ROOT / "build" / "pyinstaller"
 DIST_DIR = ROOT / "dist"
 ENTRYPOINT = ROOT / "app" / "main.py"
+ASSETS_DIR = ROOT / "assets"
 
 
 def parse_args() -> argparse.Namespace:
@@ -51,6 +51,10 @@ def build() -> None:
         *data_args,
     ]
 
+    icon_path = build_icon_path()
+    if icon_path is not None:
+        args.extend(["--icon", str(icon_path)])
+
     if os.name == "posix" and os.uname().sysname == "Darwin":
         args.extend(["--osx-bundle-identifier", "local.face.recognizer"])
 
@@ -74,7 +78,24 @@ def iter_data_files() -> list[tuple[str, str]]:
             if model_file.is_file():
                 data_files.append((str(model_file), "models"))
 
+    if ASSETS_DIR.exists():
+        for asset_file in sorted(ASSETS_DIR.rglob("*")):
+            if asset_file.is_file():
+                relative_parent = asset_file.relative_to(ASSETS_DIR).parent
+                destination = Path("assets") / relative_parent
+                data_files.append((str(asset_file), str(destination)))
+
     return data_files
+
+
+def build_icon_path() -> Path | None:
+    if os.name == "nt":
+        icon_path = ASSETS_DIR / "app_icon.ico"
+        return icon_path if icon_path.exists() else None
+    if os.name == "posix" and os.uname().sysname == "Darwin":
+        icon_path = ASSETS_DIR / "app_icon.icns"
+        return icon_path if icon_path.exists() else None
+    return None
 
 
 def clean() -> None:

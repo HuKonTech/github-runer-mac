@@ -35,6 +35,11 @@ def resource_path(relative_path: str) -> Path:
     return bundle_root() / relative_path
 
 
+def app_icon_path() -> Path:
+    """Return the preferred application icon path."""
+    return resource_path("assets/app_icon.png")
+
+
 def user_config_dir() -> Path:
     """Return the per-user configuration directory."""
     home = Path.home()

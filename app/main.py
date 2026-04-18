@@ -13,7 +13,7 @@ import argparse
 import logging
 import sys
 
-from app.paths import default_log_file
+from app.paths import app_icon_path, default_log_file
 
 
 def parse_args() -> argparse.Namespace:
@@ -75,12 +75,11 @@ def main() -> None:
 
     # --- Qt application ---
     from PySide6.QtWidgets import QApplication
-    from PySide6.QtGui import QPalette, QColor
-    from PySide6.QtCore import Qt
 
     app = QApplication(sys.argv)
     app.setApplicationName("Face-Local")
     app.setOrganizationName("face-local")
+    _apply_app_icon(app)
 
     # Dark palette
     _apply_dark_palette(app)
@@ -88,6 +87,7 @@ def main() -> None:
     from app.ui.main_window import MainWindow
 
     window = MainWindow(config=config)
+    window.setWindowIcon(app.windowIcon())
     window.show()
 
     log.info("GUI ready")
@@ -96,8 +96,7 @@ def main() -> None:
 
 def _apply_dark_palette(app) -> None:  # noqa: ANN001
     """Apply a system-consistent dark color palette."""
-    from PySide6.QtGui import QPalette, QColor
-    from PySide6.QtCore import Qt
+    from PySide6.QtGui import QColor, QPalette
 
     palette = QPalette()
     dark = QColor(45, 45, 48)
@@ -123,6 +122,17 @@ def _apply_dark_palette(app) -> None:  # noqa: ANN001
     palette.setColor(QPalette.Disabled, QPalette.ButtonText, QColor(120, 120, 120))
 
     app.setPalette(palette)
+
+
+def _apply_app_icon(app) -> None:  # noqa: ANN001
+    """Load and apply the bundled application icon when present."""
+    icon_path = app_icon_path()
+    if not icon_path.exists():
+        return
+
+    from PySide6.QtGui import QIcon
+
+    app.setWindowIcon(QIcon(str(icon_path)))
 
 
 if __name__ == "__main__":
