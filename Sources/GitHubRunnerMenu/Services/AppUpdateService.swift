@@ -143,7 +143,7 @@ final class AppUpdateService {
 
         guard
             let asset = decoded.assets.first(where: {
-                $0.name.hasSuffix("-macOS-arm64.zip")
+                $0.isSupportedMacOSZipAsset
             }),
             let downloadURL = URL(string: asset.browserDownloadURL),
             let releasePageURL = URL(string: decoded.htmlURL)
@@ -329,6 +329,11 @@ private struct GitHubReleaseResponse: Decodable {
 private struct GitHubReleaseAsset: Decodable {
     let name: String
     let browserDownloadURL: String
+
+    var isSupportedMacOSZipAsset: Bool {
+        let normalizedName = name.lowercased()
+        return normalizedName.contains("-macos-arm64") && normalizedName.hasSuffix(".zip")
+    }
 
     enum CodingKeys: String, CodingKey {
         case name
