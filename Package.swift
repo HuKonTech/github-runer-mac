@@ -4,6 +4,7 @@ import PackageDescription
 
 let package = Package(
     name: "github_mac",
+    defaultLocalization: "en",
     platforms: [
         .macOS(.v14),
     ],
@@ -15,7 +16,15 @@ let package = Package(
     ],
     targets: [
         .executableTarget(
-            name: "GitHubRunnerMenu"
+            name: "GitHubRunnerMenu",
+            resources: [
+                .process("Resources"),
+            ]
+        ),
+        .testTarget(
+            name: "GitHubRunnerMenuTests",
+            dependencies: ["GitHubRunnerMenu"],
+            path: "tests/GitHubRunnerMenuTests"
         ),
     ]
 )

@@ -16,6 +16,38 @@ private enum AppTextKey: String {
     case buttonOpenRunnerDirectory
     case buttonOpenUpdateWindow
     case buttonOpenAboutWindow
+    case buttonOpenSettingsWindow
+    case settingsWindowTitle
+    case settingsGeneralTitle
+    case settingsRunnerTitle
+    case settingsUpdatesTitle
+    case settingsNetworkTitle
+    case settingsAdvancedTitle
+    case settingsAboutTitle
+    case settingsLanguageTitle
+    case languageSystemDefault
+    case languageHungarian
+    case languageEnglish
+    case settingsLanguageRestartHint
+    case settingsRunnerFolderTitle
+    case settingsAutomaticUpdateCheckTitle
+    case settingsUpdateChannelTitle
+    case updateChannelStable
+    case updateChannelPreview
+    case settingsNetworkStateTitle
+    case settingsNetworkPolicyTitle
+    case settingsNetworkOverrideTitle
+    case settingsNetworkExplanation
+    case settingsAdvancedRunnerProcessTitle
+    case settingsAdvancedCPU
+    case settingsAdvancedMemory
+    case settingsAdvancedJobActive
+    case settingsAboutAppNameTitle
+    case settingsAboutLicenseTitle
+    case settingsAboutLicenseValue
+    case advancedViewTitle
+    case booleanYes
+    case booleanNo
     case aboutWindowTitle
     case aboutDescription
     case buttonOpenAuthorGitHub
@@ -142,14 +174,28 @@ enum AppStrings {
 
     private static let fallbackLanguage = "en"
 
-    private static let matchedLanguageIdentifier: String = {
+    private static var matchedLanguageIdentifier: String {
+        if
+            let rawPreference = UserDefaults.standard.string(forKey: AppPreferencesStore.languageDefaultsKey),
+            let preference = AppLanguagePreference(rawValue: rawPreference),
+            let identifier = preference.appStringsIdentifier
+        {
+            return identifier
+        }
+
+        return systemMatchedLanguageIdentifier
+    }
+
+    private static let systemMatchedLanguageIdentifier: String = {
         Bundle.preferredLocalizations(
             from: supportedLanguageIdentifiers,
             forPreferences: Locale.preferredLanguages
         ).first ?? fallbackLanguage
     }()
 
-    private static let activeLanguageFamily = languageFamily(for: matchedLanguageIdentifier)
+    private static var activeLanguageFamily: String {
+        languageFamily(for: matchedLanguageIdentifier)
+    }
 
     private static let english: Catalog = [
         .appName: "github runer mac",
@@ -167,6 +213,38 @@ enum AppStrings {
         .buttonOpenRunnerDirectory: "Open runner folder",
         .buttonOpenUpdateWindow: "Check for updates",
         .buttonOpenAboutWindow: "About and links",
+        .buttonOpenSettingsWindow: "Settings...",
+        .settingsWindowTitle: "Settings",
+        .settingsGeneralTitle: "General",
+        .settingsRunnerTitle: "Runner",
+        .settingsUpdatesTitle: "Updates",
+        .settingsNetworkTitle: "Network",
+        .settingsAdvancedTitle: "Advanced",
+        .settingsAboutTitle: "About",
+        .settingsLanguageTitle: "Language",
+        .languageSystemDefault: "System default",
+        .languageHungarian: "Hungarian",
+        .languageEnglish: "English",
+        .settingsLanguageRestartHint: "Language changes are saved immediately. Some text may update after restarting the app.",
+        .settingsRunnerFolderTitle: "Runner folder",
+        .settingsAutomaticUpdateCheckTitle: "Check for updates automatically",
+        .settingsUpdateChannelTitle: "Update channel",
+        .updateChannelStable: "Stable",
+        .updateChannelPreview: "Developer / Preview",
+        .settingsNetworkStateTitle: "Current network",
+        .settingsNetworkPolicyTitle: "Network policy",
+        .settingsNetworkOverrideTitle: "Manual override",
+        .settingsNetworkExplanation: "Automatic mode runs the runner on unmetered connections and stops it when the network is offline or metered.",
+        .settingsAdvancedRunnerProcessTitle: "Runner process",
+        .settingsAdvancedCPU: "CPU",
+        .settingsAdvancedMemory: "Memory",
+        .settingsAdvancedJobActive: "Job active",
+        .settingsAboutAppNameTitle: "App name",
+        .settingsAboutLicenseTitle: "License",
+        .settingsAboutLicenseValue: "MIT",
+        .advancedViewTitle: "Advanced view",
+        .booleanYes: "Yes",
+        .booleanNo: "No",
         .aboutWindowTitle: "About github runer mac",
         .aboutDescription: "Created by Benedek Koncsik. Open the profile pages or the project repository directly from the menu.",
         .buttonOpenAuthorGitHub: "GitHub profile",
@@ -252,6 +330,38 @@ enum AppStrings {
             .buttonOpenRunnerDirectory: "Runner mappa megnyitása",
             .buttonOpenUpdateWindow: "Frissítések keresése",
             .buttonOpenAboutWindow: "Névjegy és linkek",
+            .buttonOpenSettingsWindow: "Beállítások...",
+            .settingsWindowTitle: "Beállítások",
+            .settingsGeneralTitle: "Általános",
+            .settingsRunnerTitle: "Runner",
+            .settingsUpdatesTitle: "Frissítések",
+            .settingsNetworkTitle: "Hálózat",
+            .settingsAdvancedTitle: "Haladó",
+            .settingsAboutTitle: "Névjegy",
+            .settingsLanguageTitle: "Nyelv",
+            .languageSystemDefault: "Rendszer alapértelmezése",
+            .languageHungarian: "Magyar",
+            .languageEnglish: "Angol",
+            .settingsLanguageRestartHint: "A nyelvválasztást az app azonnal menti. Néhány szöveg csak az app újraindítása után frissülhet.",
+            .settingsRunnerFolderTitle: "Runner mappa",
+            .settingsAutomaticUpdateCheckTitle: "Frissítések automatikus keresése",
+            .settingsUpdateChannelTitle: "Frissítési csatorna",
+            .updateChannelStable: "Stabil",
+            .updateChannelPreview: "Fejlesztői / előnézeti",
+            .settingsNetworkStateTitle: "Aktuális hálózat",
+            .settingsNetworkPolicyTitle: "Hálózati szabály",
+            .settingsNetworkOverrideTitle: "Kézi felülbírálás",
+            .settingsNetworkExplanation: "Automatikus módban a runner nem forgalomkorlátos kapcsolaton futhat, offline vagy forgalomkorlátos hálózaton pedig leáll.",
+            .settingsAdvancedRunnerProcessTitle: "Runner folyamat",
+            .settingsAdvancedCPU: "CPU",
+            .settingsAdvancedMemory: "Memória",
+            .settingsAdvancedJobActive: "Aktív job",
+            .settingsAboutAppNameTitle: "App neve",
+            .settingsAboutLicenseTitle: "Licenc",
+            .settingsAboutLicenseValue: "MIT",
+            .advancedViewTitle: "Haladó nézet",
+            .booleanYes: "Igen",
+            .booleanNo: "Nem",
             .aboutWindowTitle: "github runer mac névjegy",
             .aboutDescription: "Készítette Benedek Koncsik. Innen közvetlenül megnyithatod a profiloldalakat és a projekt repositoryját.",
             .buttonOpenAuthorGitHub: "GitHub profil",
@@ -1065,6 +1175,38 @@ enum AppStrings {
     static var buttonOpenRunnerDirectory: String { value(.buttonOpenRunnerDirectory) }
     static var buttonOpenUpdateWindow: String { value(.buttonOpenUpdateWindow) }
     static var buttonOpenAboutWindow: String { value(.buttonOpenAboutWindow) }
+    static var buttonOpenSettingsWindow: String { value(.buttonOpenSettingsWindow) }
+    static var settingsWindowTitle: String { value(.settingsWindowTitle) }
+    static var settingsGeneralTitle: String { value(.settingsGeneralTitle) }
+    static var settingsRunnerTitle: String { value(.settingsRunnerTitle) }
+    static var settingsUpdatesTitle: String { value(.settingsUpdatesTitle) }
+    static var settingsNetworkTitle: String { value(.settingsNetworkTitle) }
+    static var settingsAdvancedTitle: String { value(.settingsAdvancedTitle) }
+    static var settingsAboutTitle: String { value(.settingsAboutTitle) }
+    static var settingsLanguageTitle: String { value(.settingsLanguageTitle) }
+    static var languageSystemDefault: String { value(.languageSystemDefault) }
+    static var languageHungarian: String { value(.languageHungarian) }
+    static var languageEnglish: String { value(.languageEnglish) }
+    static var settingsLanguageRestartHint: String { value(.settingsLanguageRestartHint) }
+    static var settingsRunnerFolderTitle: String { value(.settingsRunnerFolderTitle) }
+    static var settingsAutomaticUpdateCheckTitle: String { value(.settingsAutomaticUpdateCheckTitle) }
+    static var settingsUpdateChannelTitle: String { value(.settingsUpdateChannelTitle) }
+    static var updateChannelStable: String { value(.updateChannelStable) }
+    static var updateChannelPreview: String { value(.updateChannelPreview) }
+    static var settingsNetworkStateTitle: String { value(.settingsNetworkStateTitle) }
+    static var settingsNetworkPolicyTitle: String { value(.settingsNetworkPolicyTitle) }
+    static var settingsNetworkOverrideTitle: String { value(.settingsNetworkOverrideTitle) }
+    static var settingsNetworkExplanation: String { value(.settingsNetworkExplanation) }
+    static var settingsAdvancedRunnerProcessTitle: String { value(.settingsAdvancedRunnerProcessTitle) }
+    static var settingsAdvancedCPU: String { value(.settingsAdvancedCPU) }
+    static var settingsAdvancedMemory: String { value(.settingsAdvancedMemory) }
+    static var settingsAdvancedJobActive: String { value(.settingsAdvancedJobActive) }
+    static var settingsAboutAppNameTitle: String { value(.settingsAboutAppNameTitle) }
+    static var settingsAboutLicenseTitle: String { value(.settingsAboutLicenseTitle) }
+    static var settingsAboutLicenseValue: String { value(.settingsAboutLicenseValue) }
+    static var advancedViewTitle: String { value(.advancedViewTitle) }
+    static var booleanYes: String { value(.booleanYes) }
+    static var booleanNo: String { value(.booleanNo) }
     static var aboutWindowTitle: String { value(.aboutWindowTitle) }
     static var aboutDescription: String { value(.aboutDescription) }
     static var buttonOpenAuthorGitHub: String { value(.buttonOpenAuthorGitHub) }

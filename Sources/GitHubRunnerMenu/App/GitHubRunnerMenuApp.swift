@@ -11,5 +11,13 @@ struct GitHubRunnerMenuApp: App {
             Label(AppStrings.appName, systemImage: store.menuBarSymbolName)
         }
         .menuBarExtraStyle(.window)
+        .commands {
+            CommandGroup(replacing: .appSettings) {
+                Button(AppStrings.buttonOpenSettingsWindow) {
+                    SettingsWindowController.shared.show(store: store)
+                }
+                .keyboardShortcut(",", modifiers: .command)
+            }
+        }
     }
 }

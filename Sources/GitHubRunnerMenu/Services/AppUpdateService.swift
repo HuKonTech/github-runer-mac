@@ -64,6 +64,15 @@ final class AppUpdateService {
         true
     }
 
+    var isBusy: Bool {
+        switch state {
+        case .checking, .downloading, .installing:
+            true
+        case .idle, .upToDate, .updateAvailable, .failed:
+            false
+        }
+    }
+
     func checkForUpdates() {
         state = .checking
 

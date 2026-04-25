@@ -95,38 +95,18 @@ struct MenuPanelView: View {
                 )
             )
 
-            if store.launchAtLoginStatus == .requiresApproval {
-                Button(AppStrings.buttonOpenLoginItemsSettings) {
-                    store.openLoginItemsSettings()
-                }
-            }
-
             Divider()
 
-            Button(AppStrings.buttonOpenUpdateWindow) {
-                UpdateWindowController.shared.show()
-            }
-
-            Button(AppStrings.buttonOpenAboutWindow) {
-                AboutWindowController.shared.show()
-            }
-
-            Button(AppStrings.buttonOpenRunnerDirectory) {
-                store.openRunnerDirectory()
+            Button(AppStrings.buttonOpenSettingsWindow) {
+                SettingsWindowController.shared.show(store: store)
             }
 
             Button(AppStrings.buttonQuit) {
                 NSApplication.shared.terminate(nil)
             }
-
-            Text(store.runnerPathDisplay)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .lineLimit(2)
-                .textSelection(.enabled)
         }
         .padding(16)
-        .frame(width: 330)
+        .frame(width: 320)
     }
 
     private var runnerStatusColor: Color {
@@ -190,26 +170,26 @@ private struct RunnerResourceUsageView: View {
     @State private var isExpanded = false
 
     var body: some View {
-        DisclosureGroup("Haladó nézet", isExpanded: $isExpanded) {
+        DisclosureGroup(AppStrings.advancedViewTitle, isExpanded: $isExpanded) {
             VStack(alignment: .leading, spacing: 8) {
                 UsageRow(
-                    title: "Runner:",
-                    value: usage.isRunning ? "fut" : "nem fut"
+                    title: AppStrings.statusRunnerTitle,
+                    value: usage.isRunning ? AppStrings.runnerRunning : AppStrings.runnerStopped
                 )
 
                 UsageRow(
-                    title: "CPU:",
+                    title: AppStrings.settingsAdvancedCPU,
                     value: String(format: "%.1f%%", usage.cpuPercent)
                 )
 
                 UsageRow(
-                    title: "Memória:",
+                    title: AppStrings.settingsAdvancedMemory,
                     value: "\(Int(usage.memoryMB.rounded())) MB"
                 )
 
                 UsageRow(
-                    title: "Job aktív:",
-                    value: usage.isJobActive ? "igen" : "nem"
+                    title: AppStrings.settingsAdvancedJobActive,
+                    value: usage.isJobActive ? AppStrings.booleanYes : AppStrings.booleanNo
                 )
             }
             .padding(.top, 6)
