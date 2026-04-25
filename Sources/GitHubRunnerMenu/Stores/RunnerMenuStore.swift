@@ -1,4 +1,4 @@
-import AppKit
+@preconcurrency import AppKit
 import Foundation
 import Observation
 import OSLog
@@ -17,6 +17,8 @@ final class RunnerMenuStore {
         subsystem: "com.koncsik.githubrunnermenu",
         category: "store"
     )
+    @ObservationIgnored private var sleepObserver: NSObjectProtocol?
+    @ObservationIgnored private var wakeObserver: NSObjectProtocol?
 
     var controlMode: RunnerControlMode
     var launchAtLoginStatus: SMAppService.Status
@@ -45,12 +47,35 @@ final class RunnerMenuStore {
         launchAtLoginStatus = SMAppService.mainApp.status
 
         startMonitoring()
+        registerForSleepWakeNotifications()
     }
 
     deinit {
         refreshTask?.cancel()
         networkMonitor.stop()
         resourceMonitor.stop()
+    }
+
+    private func registerForSleepWakeNotifications() {
+        sleepObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.willSleepNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.logger.info("System going to sleep")
+        }
+
+        wakeObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didWakeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.logger.info("System woke up")
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                self.reconcileState(trigger: "wake")
+            }
+        }
     }
 
     var menuBarSymbolName: String {
