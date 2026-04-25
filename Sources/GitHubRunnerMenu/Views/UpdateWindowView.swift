@@ -42,17 +42,9 @@ struct UpdateWindowView: View {
                 }
                 .buttonStyle(.bordered)
             }
-
-            if let instructions = updater.manualBuildInstructions {
-                Text(instructions)
-                    .font(.system(.footnote, design: .monospaced))
-                    .foregroundStyle(.secondary)
-                    .textSelection(.enabled)
-                    .padding(.top, 4)
-            }
         }
         .padding(24)
-        .frame(minWidth: 500, idealWidth: 540, minHeight: 340)
+        .frame(minWidth: 500, idealWidth: 540, minHeight: 260)
     }
 
     private var isBusy: Bool {

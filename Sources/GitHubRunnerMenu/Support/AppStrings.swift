@@ -30,9 +30,6 @@ private enum AppTextKey: String {
     case buttonCheckForUpdates
     case buttonInstallUpdate
     case buttonOpenReleasePage
-    case updateBuildInstructionsIntro
-    case updateBuildInstructionsBundleOnly
-    case updateBuildInstructionsBundleLocation
     case updateIdle
     case updateChecking
     case updateUpToDate
@@ -43,9 +40,8 @@ private enum AppTextKey: String {
     case updateErrorNoPublishedRelease
     case updateErrorMissingAsset
     case updateErrorDownload
+    case updateErrorOpenInstaller
     case updateErrorNoRelease
-    case updateErrorMissingBundle
-    case updateErrorInvalidBundle
     case buttonQuit
     case runnerRunning
     case runnerStopped
@@ -177,30 +173,26 @@ enum AppStrings {
         .buttonOpenAuthorX: "X profile",
         .buttonOpenRepository: "Project repository",
         .updateWindowTitle: "Software update",
-        .updateDescription: "Check the latest GitHub release. Automatic app bundle releases are disabled, so the app shows source build instructions instead.",
+        .updateDescription: "Check the latest GitHub release and open the downloaded macOS DMG installer.",
         .updateInstalledVersionTitle: "Installed version",
         .updateLatestVersionTitle: "Latest version",
         .updateStatusTitle: "Status",
         .updateUnknownVersion: "Not checked yet",
         .buttonCheckForUpdates: "Check now",
-        .buttonInstallUpdate: "Show build instructions",
+        .buttonInstallUpdate: "Download installer",
         .buttonOpenReleasePage: "Open release page",
-        .updateBuildInstructionsIntro: "Clone the repository and run:",
-        .updateBuildInstructionsBundleOnly: "To only create the app bundle:",
-        .updateBuildInstructionsBundleLocation: "The bundle will be available in dist/GitHubRunnerMenu.app.",
         .updateIdle: "Ready to check for updates.",
         .updateChecking: "Checking GitHub releases...",
         .updateUpToDate: "You already have the latest version.",
         .updateAvailableFallback: "A newer version is available.",
         .updateDownloading: "Downloading the new version...",
-        .updateInstalling: "Installing update and restarting...",
+        .updateInstalling: "Opening the downloaded installer...",
         .updateErrorInvalidResponse: "The update server returned an unexpected response.",
         .updateErrorNoPublishedRelease: "No published GitHub release is available yet for this repository.",
         .updateErrorMissingAsset: "The latest release does not contain a macOS app download.",
         .updateErrorDownload: "The update package could not be downloaded.",
+        .updateErrorOpenInstaller: "The downloaded installer could not be opened.",
         .updateErrorNoRelease: "There is no downloadable release selected.",
-        .updateErrorMissingBundle: "The downloaded archive does not contain an app bundle.",
-        .updateErrorInvalidBundle: "This app is not running from a macOS app bundle.",
         .buttonQuit: "Quit",
         .runnerRunning: "Running",
         .runnerStopped: "Stopped",
@@ -266,30 +258,26 @@ enum AppStrings {
             .buttonOpenAuthorX: "X profil",
             .buttonOpenRepository: "Projekt repository",
             .updateWindowTitle: "Szoftverfrissítés",
-            .updateDescription: "Ellenőrzi a legfrissebb GitHub release-t. Az automatikus alkalmazáscsomag kiadás ki van kapcsolva, ezért az app forrásból buildelési útmutatót jelenít meg.",
+            .updateDescription: "Ellenőrzi a legfrissebb GitHub release-t, letölti és megnyitja a macOS DMG telepítőt.",
             .updateInstalledVersionTitle: "Telepített verzió",
             .updateLatestVersionTitle: "Legfrissebb verzió",
             .updateStatusTitle: "Állapot",
             .updateUnknownVersion: "Még nincs ellenőrizve",
             .buttonCheckForUpdates: "Ellenőrzés",
-            .buttonInstallUpdate: "Build útmutató",
+            .buttonInstallUpdate: "Telepítő letöltése",
             .buttonOpenReleasePage: "Release oldal megnyitása",
-            .updateBuildInstructionsIntro: "Clonozd le a repositoryt, majd futtasd:",
-            .updateBuildInstructionsBundleOnly: "Ha csak az alkalmazás bundle kell:",
-            .updateBuildInstructionsBundleLocation: "Az elkészült bundle itt lesz: dist/GitHubRunnerMenu.app.",
             .updateIdle: "Készen áll a frissítések ellenőrzésére.",
             .updateChecking: "GitHub release-ek ellenőrzése...",
             .updateUpToDate: "Már a legfrissebb verzió van telepítve.",
             .updateAvailableFallback: "Elérhető egy újabb verzió.",
             .updateDownloading: "Az új verzió letöltése folyamatban...",
-            .updateInstalling: "Frissítés telepítése és újraindítás...",
+            .updateInstalling: "A letöltött telepítő megnyitása...",
             .updateErrorInvalidResponse: "A frissítési kiszolgáló váratlan választ adott.",
             .updateErrorNoPublishedRelease: "Ehhez a repositoryhoz még nincs közzétett GitHub release.",
             .updateErrorMissingAsset: "A legfrissebb release nem tartalmaz letölthető macOS alkalmazást.",
             .updateErrorDownload: "Nem sikerült letölteni a frissítő csomagot.",
+            .updateErrorOpenInstaller: "Nem sikerült megnyitni a letöltött telepítőt.",
             .updateErrorNoRelease: "Nincs kiválasztott letölthető release.",
-            .updateErrorMissingBundle: "A letöltött csomag nem tartalmaz alkalmazás bundle-t.",
-            .updateErrorInvalidBundle: "Az alkalmazás nem macOS app bundle-ből fut.",
             .buttonQuit: "Kilépés",
             .runnerRunning: "Fut",
             .runnerStopped: "Leállítva",
@@ -1091,9 +1079,6 @@ enum AppStrings {
     static var buttonCheckForUpdates: String { value(.buttonCheckForUpdates) }
     static var buttonInstallUpdate: String { value(.buttonInstallUpdate) }
     static var buttonOpenReleasePage: String { value(.buttonOpenReleasePage) }
-    static var updateBuildInstructionsIntro: String { value(.updateBuildInstructionsIntro) }
-    static var updateBuildInstructionsBundleOnly: String { value(.updateBuildInstructionsBundleOnly) }
-    static var updateBuildInstructionsBundleLocation: String { value(.updateBuildInstructionsBundleLocation) }
     static var updateIdle: String { value(.updateIdle) }
     static var updateChecking: String { value(.updateChecking) }
     static var updateUpToDate: String { value(.updateUpToDate) }
@@ -1104,9 +1089,8 @@ enum AppStrings {
     static var updateErrorNoPublishedRelease: String { value(.updateErrorNoPublishedRelease) }
     static var updateErrorMissingAsset: String { value(.updateErrorMissingAsset) }
     static var updateErrorDownload: String { value(.updateErrorDownload) }
+    static var updateErrorOpenInstaller: String { value(.updateErrorOpenInstaller) }
     static var updateErrorNoRelease: String { value(.updateErrorNoRelease) }
-    static var updateErrorMissingBundle: String { value(.updateErrorMissingBundle) }
-    static var updateErrorInvalidBundle: String { value(.updateErrorInvalidBundle) }
     static var buttonQuit: String { value(.buttonQuit) }
     static var runnerRunning: String { value(.runnerRunning) }
     static var runnerStopped: String { value(.runnerStopped) }
@@ -1169,25 +1153,4 @@ enum AppStrings {
         "Update failed: \(reason)"
     }
 
-    static func updateErrorUnzip(_ reason: String) -> String {
-        "Could not unpack the update: \(reason)"
-    }
-
-    static func updateErrorInstall(_ reason: String) -> String {
-        "Could not install the update: \(reason)"
-    }
-
-    static func manualBuildInstructions(repositoryURL: String, projectDirectory: String) -> String {
-        [
-            updateBuildInstructionsIntro,
-            "git clone \(repositoryURL)",
-            "cd \(projectDirectory)",
-            "./script/build_and_run.sh run",
-            "",
-            updateBuildInstructionsBundleOnly,
-            "./script/build_and_run.sh --bundle",
-            "",
-            updateBuildInstructionsBundleLocation
-        ].joined(separator: "\n")
-    }
 }

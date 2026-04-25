@@ -18,6 +18,7 @@ final class AppUpdateService {
     struct ReleaseInfo: Equatable {
         let version: String
         let releasePageURL: URL
+        let downloadURL: URL
         let publishedAt: Date?
     }
 
@@ -30,7 +31,6 @@ final class AppUpdateService {
     var state: UpdateState = .idle
     var latestRelease: ReleaseInfo?
     var lastCheckedAt: Date?
-    var manualBuildInstructions: String?
 
     var installedVersion: String {
         let shortVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
@@ -66,7 +66,6 @@ final class AppUpdateService {
 
     func checkForUpdates() {
         state = .checking
-        manualBuildInstructions = nil
 
         Task {
             do {
@@ -88,30 +87,24 @@ final class AppUpdateService {
     }
 
     func installLatestUpdate() {
-        manualBuildInstructions = AppStrings.manualBuildInstructions(
-            repositoryURL: repositoryCloneURL,
-            projectDirectory: repository
-        )
+        guard let release = latestRelease else {
+            state = .failed(AppStrings.updateErrorNoRelease)
+            return
+        }
 
-        // Automatic app bundle download and install are intentionally disabled.
-        // guard let release = latestRelease else {
-        //     state = .failed(AppStrings.updateErrorNoRelease)
-        //     return
-        // }
-        //
-        // state = .downloading
-        //
-        // Task {
-        //     do {
-        //         let downloadedZip = try await downloadReleaseAsset(from: release.downloadURL)
-        //         state = .installing
-        //         try stageAndInstall(zipURL: downloadedZip)
-        //     } catch {
-        //         state = .failed(
-        //             AppStrings.updateErrorDetails(error.localizedDescription)
-        //         )
-        //     }
-        // }
+        state = .downloading
+
+        Task {
+            do {
+                let downloadedDMG = try await downloadReleaseAsset(from: release.downloadURL)
+                state = .installing
+                try openInstaller(at: downloadedDMG)
+            } catch {
+                state = .failed(
+                    AppStrings.updateErrorDetails(error.localizedDescription)
+                )
+            }
+        }
     }
 
     func openReleasePage() {
@@ -145,26 +138,19 @@ final class AppUpdateService {
             throw UpdateError.invalidResponse
         }
 
-        // Automatic app bundle release assets are intentionally disabled.
-        // guard
-        //     let asset = decoded.assets.first(where: {
-        //         $0.isSupportedMacOSZipAsset
-        //     }),
-        //     let downloadURL = URL(string: asset.browserDownloadURL),
-        //     let releasePageURL = URL(string: decoded.htmlURL)
-        // else {
-        //     throw UpdateError.missingAsset
-        // }
+        guard
+            let asset = GitHubReleaseAsset.bestSupportedDMGAsset(in: decoded.assets),
+            let downloadURL = URL(string: asset.browserDownloadURL)
+        else {
+            throw UpdateError.missingAsset
+        }
 
         return ReleaseInfo(
             version: decoded.tagName.replacingOccurrences(of: "v", with: ""),
             releasePageURL: releasePageURL,
+            downloadURL: downloadURL,
             publishedAt: decoded.publishedAt
         )
-    }
-
-    private var repositoryCloneURL: String {
-        "https://github.com/\(owner)/\(repository).git"
     }
 
     private var releasesPageURL: URL {
@@ -180,7 +166,7 @@ final class AppUpdateService {
 
         let destination = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString)
-            .appendingPathExtension("zip")
+            .appendingPathExtension("dmg")
 
         try FileManager.default.createDirectory(
             at: destination.deletingLastPathComponent(),
@@ -192,74 +178,10 @@ final class AppUpdateService {
         return destination
     }
 
-    private func stageAndInstall(zipURL: URL) throws {
-        let tempRoot = FileManager.default.temporaryDirectory
-            .appendingPathComponent("github-runner-update-\(UUID().uuidString)", isDirectory: true)
-        let unzipDirectory = tempRoot.appendingPathComponent("unzipped", isDirectory: true)
-
-        try FileManager.default.createDirectory(at: unzipDirectory, withIntermediateDirectories: true)
-
-        let unzipResult = try Shell.run(
-            executable: URL(fileURLWithPath: "/usr/bin/ditto"),
-            arguments: ["-x", "-k", zipURL.path, unzipDirectory.path]
-        )
-
-        guard unzipResult.status == 0 else {
-            throw UpdateError.unzipFailed(unzipResult.stderr)
+    private func openInstaller(at url: URL) throws {
+        guard NSWorkspace.shared.open(url) else {
+            throw UpdateError.openInstallerFailed
         }
-
-        let newBundleURL = try locateAppBundle(in: unzipDirectory)
-        let currentBundleURL = Bundle.main.bundleURL.standardizedFileURL
-
-        guard currentBundleURL.pathExtension == "app" else {
-            throw UpdateError.invalidCurrentBundle
-        }
-
-        let updaterScriptURL = tempRoot.appendingPathComponent("install_update.sh")
-        let script = """
-        #!/bin/bash
-        set -euo pipefail
-        APP_PATH=\(shellQuote(currentBundleURL.path))
-        NEW_APP_PATH=\(shellQuote(newBundleURL.path))
-        while kill -0 \(ProcessInfo.processInfo.processIdentifier) >/dev/null 2>&1; do
-          sleep 1
-        done
-        rm -rf "$APP_PATH"
-        cp -R "$NEW_APP_PATH" "$APP_PATH"
-        open -n "$APP_PATH"
-        """
-
-        try script.write(to: updaterScriptURL, atomically: true, encoding: .utf8)
-
-        let chmodResult = try Shell.run(
-            executable: URL(fileURLWithPath: "/bin/chmod"),
-            arguments: ["+x", updaterScriptURL.path]
-        )
-
-        guard chmodResult.status == 0 else {
-            throw UpdateError.installFailed(chmodResult.stderr)
-        }
-
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/bin/bash")
-        process.arguments = ["-c", "nohup \(shellQuote(updaterScriptURL.path)) >/dev/null 2>&1 &"]
-        try process.run()
-
-        NSApp.terminate(nil)
-    }
-
-    private func locateAppBundle(in directory: URL) throws -> URL {
-        guard let enumerator = FileManager.default.enumerator(at: directory, includingPropertiesForKeys: nil) else {
-            throw UpdateError.missingBundle
-        }
-
-        for case let url as URL in enumerator {
-            if url.pathExtension == "app" {
-                return url
-            }
-        }
-
-        throw UpdateError.missingBundle
     }
 
     private func isVersion(_ lhs: String, newerThan rhs: String) -> Bool {
@@ -287,9 +209,6 @@ final class AppUpdateService {
             .map { Int($0) ?? 0 }
     }
 
-    private func shellQuote(_ text: String) -> String {
-        "'\(text.replacingOccurrences(of: "'", with: "'\\''"))'"
-    }
 }
 
 private enum UpdateError: LocalizedError {
@@ -297,10 +216,7 @@ private enum UpdateError: LocalizedError {
     case noPublishedRelease
     case missingAsset
     case downloadFailed
-    case unzipFailed(String)
-    case missingBundle
-    case invalidCurrentBundle
-    case installFailed(String)
+    case openInstallerFailed
 
     var errorDescription: String? {
         switch self {
@@ -312,14 +228,8 @@ private enum UpdateError: LocalizedError {
             AppStrings.updateErrorMissingAsset
         case .downloadFailed:
             AppStrings.updateErrorDownload
-        case .unzipFailed(let details):
-            AppStrings.updateErrorUnzip(details)
-        case .missingBundle:
-            AppStrings.updateErrorMissingBundle
-        case .invalidCurrentBundle:
-            AppStrings.updateErrorInvalidBundle
-        case .installFailed(let details):
-            AppStrings.updateErrorInstall(details)
+        case .openInstallerFailed:
+            AppStrings.updateErrorOpenInstaller
         }
     }
 }
@@ -342,9 +252,29 @@ private struct GitHubReleaseAsset: Decodable {
     let name: String
     let browserDownloadURL: String
 
-    var isSupportedMacOSZipAsset: Bool {
+    static func bestSupportedDMGAsset(in assets: [GitHubReleaseAsset]) -> GitHubReleaseAsset? {
+        assets.first(where: { $0.isCurrentArchitectureMacOSDMGAsset })
+            ?? assets.first(where: { $0.isMacOSDMGAsset })
+    }
+
+    private var isCurrentArchitectureMacOSDMGAsset: Bool {
         let normalizedName = name.lowercased()
-        return normalizedName.contains("-macos-arm64") && normalizedName.hasSuffix(".zip")
+        return normalizedName.contains("-macos-\(Self.currentArchitecture)") && normalizedName.hasSuffix(".dmg")
+    }
+
+    private var isMacOSDMGAsset: Bool {
+        let normalizedName = name.lowercased()
+        return normalizedName.contains("-macos-") && normalizedName.hasSuffix(".dmg")
+    }
+
+    private static var currentArchitecture: String {
+        #if arch(arm64)
+        "arm64"
+        #elseif arch(x86_64)
+        "x86_64"
+        #else
+        ""
+        #endif
     }
 
     enum CodingKeys: String, CodingKey {
