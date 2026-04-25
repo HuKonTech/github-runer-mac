@@ -8,6 +8,7 @@ BUNDLE_ID="com.koncsik.githubrunnermenu"
 MIN_SYSTEM_VERSION="14.0"
 APP_VERSION="${APP_VERSION:-0.1.0}"
 CODE_SIGN_IDENTITY="${CODE_SIGN_IDENTITY:--}"
+BUILD_CONFIGURATION="${BUILD_CONFIGURATION:-debug}"
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DIST_DIR="$ROOT_DIR/dist"
@@ -21,8 +22,8 @@ ICON_FILE="$ROOT_DIR/Assets/AppIcon.icns"
 
 pkill -x "$PRODUCT_NAME" >/dev/null 2>&1 || true
 
-swift build --package-path "$ROOT_DIR"
-BUILD_BINARY="$(swift build --package-path "$ROOT_DIR" --show-bin-path)/$PRODUCT_NAME"
+swift build --package-path "$ROOT_DIR" -c "$BUILD_CONFIGURATION"
+BUILD_BINARY="$(swift build --package-path "$ROOT_DIR" -c "$BUILD_CONFIGURATION" --show-bin-path)/$PRODUCT_NAME"
 /usr/bin/swift "$ROOT_DIR/script/generate_icon.swift" >/dev/null
 /usr/bin/iconutil -c icns "$ROOT_DIR/Assets/AppIcon.iconset" -o "$ICON_FILE"
 

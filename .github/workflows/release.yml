@@ -212,79 +212,20 @@ jobs:
         shell: bash
         run: swift build
 
-      # The .app bundle release flow is intentionally disabled for now.
-      # - name: Determine Apple signing availability
-      #   id: signing
-      #   shell: bash
-      #   run: |
-      #     if [[ \
-      #       -n "${APPLE_DEVELOPER_IDENTITY:-}" && \
-      #       -n "${APPLE_DEVELOPER_CERTIFICATE_P12:-}" && \
-      #       -n "${APPLE_DEVELOPER_CERTIFICATE_PASSWORD:-}" && \
-      #       -n "${APPLE_NOTARY_APPLE_ID:-}" && \
-      #       -n "${APPLE_NOTARY_TEAM_ID:-}" && \
-      #       -n "${APPLE_NOTARY_APP_PASSWORD:-}" \
-      #     ]]; then
-      #       echo "enabled=true" >> "$GITHUB_OUTPUT"
-      #     else
-      #       echo "enabled=false" >> "$GITHUB_OUTPUT"
-      #     fi
-      #
-      # - name: Import Apple Developer certificate
-      #   if: ${{ steps.signing.outputs.enabled == 'true' }}
-      #   shell: bash
-      #   run: |
-      #     echo "Disabled together with .app bundle releases."
-      #
-      # - name: Build app bundle
-      #   shell: bash
-      #   run: APP_VERSION="${{ needs.prepare.outputs.package_version }}" ./script/build_and_run.sh --bundle
-      #
-      # - name: Create notarization archive
-      #   if: ${{ steps.signing.outputs.enabled == 'true' }}
-      #   shell: bash
-      #   run: |
-      #     mkdir -p notarization
-      #     ditto -c -k --sequesterRsrc --keepParent \
-      #       "dist/GitHubRunnerMenu.app" \
-      #       "notarization/GitHubRunnerMenu-for-notarization.zip"
-      #
-      # - name: Submit app for notarization
-      #   if: ${{ steps.signing.outputs.enabled == 'true' }}
-      #   shell: bash
-      #   run: |
-      #     xcrun notarytool submit \
-      #       "notarization/GitHubRunnerMenu-for-notarization.zip" \
-      #       --apple-id "$APPLE_NOTARY_APPLE_ID" \
-      #       --team-id "$APPLE_NOTARY_TEAM_ID" \
-      #       --password "$APPLE_NOTARY_APP_PASSWORD" \
-      #       --wait
-      #
-      # - name: Staple notarization ticket
-      #   if: ${{ steps.signing.outputs.enabled == 'true' }}
-      #   shell: bash
-      #   run: |
-      #     xcrun stapler staple "dist/GitHubRunnerMenu.app"
-      #     xcrun stapler validate "dist/GitHubRunnerMenu.app"
-      #     spctl -a -vv "dist/GitHubRunnerMenu.app"
-      #
-      # - name: Create release directory
-      #   shell: bash
-      #   run: mkdir -p release
-      #
-      # - name: Package macOS app
-      #   shell: bash
-      #   run: |
-      #     ditto -c -k --sequesterRsrc --keepParent \
-      #       "dist/GitHubRunnerMenu.app" \
-      #       "release/GitHubRunnerMenu-macOS-arm64-${{ needs.prepare.outputs.package_version }}.zip"
-      #
-      # - name: Upload macOS artifact
-      #   uses: actions/upload-artifact@v4
-      #   with:
-      #     name: release-asset
-      #     path: release/GitHubRunnerMenu-macOS-arm64-${{ needs.prepare.outputs.package_version }}.zip
-      #     if-no-files-found: error
+      - name: Build app bundle
+        shell: bash
+        run: APP_VERSION="${{ needs.prepare.outputs.package_version }}" BUILD_CONFIGURATION=release ./script/build_and_run.sh --bundle
+
+      - name: Build DMG installer
+        shell: bash
+        run: APP_VERSION="${{ needs.prepare.outputs.package_version }}" ./script/build_dmg.sh
+
+      - name: Upload macOS DMG artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-asset
+          path: release/GitHubRunnerMenu-macOS-*-${{ needs.prepare.outputs.package_version }}.dmg
+          if-no-files-found: error
 
   release:
     name: Create GitHub Release
@@ -302,6 +243,12 @@ jobs:
         run: |
           echo "url=${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/releases/tag/${{ needs.prepare.outputs.tag }}" >> "$GITHUB_OUTPUT"
 
+      - name: Download release artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: release-asset
+          path: release-assets
+
       - name: Create release
         uses: softprops/action-gh-release@v2
         with:
@@ -310,51 +257,21 @@ jobs:
           name: ${{ needs.prepare.outputs.release_name }}
           prerelease: ${{ needs.prepare.outputs.prerelease == 'true' }}
           body: |
-            Automatic app bundle releases are disabled.
+            Download the macOS DMG installer from the assets below.
 
-            Clone the repository and run:
+            The app is built from this release tag and packaged as a drag-to-Applications installer.
 
-            ```bash
-            git clone https://github.com/${{ github.repository }}.git
-            cd github-runer-mac
-            ./script/build_and_run.sh run
-            ```
-
-            To only create the app bundle:
-
-            ```bash
-            ./script/build_and_run.sh --bundle
-            ```
-
-            The bundle will be available in `dist/GitHubRunnerMenu.app`.
+            Note: this build is ad-hoc signed. macOS may ask for confirmation the first time it is opened.
 
             ---
 
-            Az automatikus alkalmazáscsomag kiadás ki van kapcsolva.
+            Töltsd le a macOS DMG telepítőt az alábbi assetek közül.
 
-            Clonozd le a repositoryt, majd futtasd:
+            Az alkalmazás ebből a release tagből készül, és behúzható az Applications mappába.
 
-            ```bash
-            git clone https://github.com/${{ github.repository }}.git
-            cd github-runer-mac
-            ./script/build_and_run.sh run
-            ```
+            Megjegyzés: ez a build ad-hoc aláírással készül. A macOS az első indításkor megerősítést kérhet.
 
-            Ha csak az alkalmazás bundle kell:
-
-            ```bash
-            ./script/build_and_run.sh --bundle
-            ```
-
-            Az elkészült bundle itt lesz: `dist/GitHubRunnerMenu.app`.
-
-      # The release asset download/upload flow is intentionally disabled together
-      # with automatic .app bundle releases.
-      # - name: Download release artifact
-      #   uses: actions/download-artifact@v4
-      #   with:
-      #     name: release-asset
-      #     path: release-assets
+          files: release-assets/*.dmg
 
   post-to-buffer:
     name: Post Release Announcement

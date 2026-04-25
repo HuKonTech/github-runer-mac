@@ -10,21 +10,23 @@ See the [LICENSE](LICENSE) file for licensing details.
 
 ## Release instructions
 
-Automatic `.app` bundle releases are currently disabled in GitHub Actions. Each release includes the same source-build instructions:
+GitHub Actions builds and publishes a macOS `.dmg` installer for each release.
+
+To build the app bundle locally:
 
 ```bash
 git clone https://github.com/HunKonTech/github-runer-mac.git
 cd github-runer-mac
-./script/build_and_run.sh run
-```
-
-To only create the app bundle locally:
-
-```bash
 ./script/build_and_run.sh --bundle
 ```
 
-The bundle will be available in `dist/GitHubRunnerMenu.app`.
+To create the DMG locally after the bundle exists:
+
+```bash
+APP_VERSION=1.0.0 ./script/build_dmg.sh
+```
+
+The bundle will be available in `dist/GitHubRunnerMenu.app`, and the installer in `release/`.
 
 ## Magyar
 
@@ -36,18 +38,20 @@ A licenc részletei a [LICENSE](LICENSE) fájlban találhatók.
 
 ## Release útmutató
 
-Az automatikus `.app` bundle kiadás jelenleg ki van kapcsolva a GitHub Actions workflow-ban. Minden release ugyanazt a forrásból buildelési útmutatót tartalmazza:
+A GitHub Actions minden release-hez macOS `.dmg` telepítőt buildel és tesz közzé.
+
+Ha helyben szeretnéd elkészíteni az alkalmazás bundle-t:
 
 ```bash
 git clone https://github.com/HunKonTech/github-runer-mac.git
 cd github-runer-mac
-./script/build_and_run.sh run
-```
-
-Ha csak az alkalmazás bundle kell helyben:
-
-```bash
 ./script/build_and_run.sh --bundle
 ```
 
-Az elkészült bundle itt lesz: `dist/GitHubRunnerMenu.app`.
+Ha a bundle elkészülte után helyben szeretnél DMG-t készíteni:
+
+```bash
+APP_VERSION=1.0.0 ./script/build_dmg.sh
+```
+
+Az elkészült bundle itt lesz: `dist/GitHubRunnerMenu.app`, a telepítő pedig a `release/` mappában.
